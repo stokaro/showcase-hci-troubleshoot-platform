@@ -7,6 +7,7 @@ on:
       # Schema 对象变更时触发（Ptah Compat 管理）
       - "database/desired_schema.sql"
       - "database/tests/**"
+      - "database/licenses/**"
       # Atlas 迁移与完整性哈希变化同样必须触发，避免只改 migration 绕过验证
       - "database/atlas-migrations/**"
       # 数据迁移变更时触发（migration-runner 管理）
@@ -53,12 +54,17 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          # 升级验证需要读取 PR 基线（手动运行时为 origin/main）。
+          fetch-depth: 0
 
       # ── Step 1: 构建迁移镜像 + 准备 dev 数据库 ─────────────────────────
       - name: 构建 Ptah Compat 迁移镜像
         run: |
           docker --context default build --build-arg MIRROR_MODE=off \
             -f Dockerfile.migrations -t hci-db-migrate-verify .
+          docker --context default run --rm --entrypoint test hci-db-migrate-verify \
+            -s /usr/share/licenses/ptah/LICENSE
 
       - name: 准备 Ptah Compat dev 数据库
         run: |
@@ -156,3 +162,38 @@ jobs:
             exit 1
           fi
           echo "✅ 幂等性验证通过：DB 与期望 Schema 完全一致，无待变更项"
+
+      - name: 从 PR 基线升级存量数据库
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+        run: |
+          # 使用相邻版本的真实部署入口，避免永久只验证首次替换 Atlas 的历史基线。
+          git worktree add --detach "$RUNNER_TEMP/db-upgrade-base" "$BASE_REVISION"
+          docker --context default build --build-arg MIRROR_MODE=off \
+            -f "$RUNNER_TEMP/db-upgrade-base/Dockerfile.migrations" \
+            -t hci-db-migrate-base "$RUNNER_TEMP/db-upgrade-base"
+          psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -c "CREATE DATABASE hci_upgrade;"
+          psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -c "CREATE DATABASE hci_upgrade_dev;"
+          export DATABASE_URL="postgres://hci_test:ci_test_pass@localhost:5432/hci_upgrade?sslmode=disable"
+          export DEV_URL="postgres://hci_test:ci_test_pass@localhost:5432/hci_upgrade_dev?sslmode=disable"
+          docker --context default run --rm --network host --user 65534:65534 \
+            -e DATABASE_URL -e DEV_URL hci-db-migrate-base
+          CHECKSUM=$(psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL" -tAc \
+            "SELECT checksum FROM migration_history WHERE version='035';")
+          test -n "$CHECKSUM"
+          psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL" -c \
+            "INSERT INTO \"user\"(client_id,metadata) VALUES ('ptah-upgrade-sentinel','{\"preserve\":\"user-data\"}');"
+          docker --context default run --rm --network host --user 65534:65534 \
+            -e DATABASE_URL -e DEV_URL hci-db-migrate-verify
+          test "$CHECKSUM" = "$(psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL" -tAc \
+            "SELECT checksum FROM migration_history WHERE version='035';")"
+          test "$(psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL" -tAc \
+            "SELECT count(*) FROM \"user\" WHERE client_id='ptah-upgrade-sentinel' AND metadata='{\"preserve\":\"user-data\"}'::jsonb;")" = "1"
+          psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL" -f database/tests/ptah-schema.sql
+          DIFF=$(docker --context default run --rm --network host --user 65534:65534 \
+            --entrypoint ptah-compat hci-db-migrate-verify schema diff \
+            --from "$DATABASE_URL" --to file:///desired_schema.sql --dev-url "$DEV_URL" \
+            --exclude "schema_migrations,alembic_version,atlas_schema_revisions" \
+            --format '{{ len .Changes }}')
+          test "$DIFF" = "0"
+          echo "✅ 升级保留存量数据和迁移历史，业务行为正常且 Schema diff 为零"

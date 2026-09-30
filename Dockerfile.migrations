@@ -12,7 +12,7 @@
 #   docker build -f Dockerfile.migrations -t hci-db-migrate:local .
 
 # Stage 1: 获取 Ptah Compat 二进制（固定版本，升级时显式更新）
-FROM stokaro/ptah:0.11.2 AS ptah-bin
+FROM stokaro/ptah:0.11.2@sha256:0013ca27cdf4443b130e516b572a0739cbc0802d907790813a682fc91974cf98 AS ptah-bin
 
 # Stage 2: 基础镜像用 postgres:15-alpine（自带 psql）
 FROM postgres:15-alpine
@@ -26,8 +26,9 @@ RUN if [ "$MIRROR_MODE" = "on" ]; then \
 # 吸收 Alpine 安全仓库中已发布的基础包修复。
 RUN apk upgrade --no-cache
 
-# 复制 Ptah Compat 二进制
+# 复制 Ptah Compat 二进制及 v0.11.2 原始许可证
 COPY --from=ptah-bin /usr/local/bin/ptah-compat /usr/local/bin/ptah-compat
+COPY database/licenses/ptah-LICENSE /usr/share/licenses/ptah/LICENSE
 
 # 保留 pgvector 的 lists=100；允许新库尚不存在被排除的历史工具表。
 ENV PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1 PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1
