@@ -1,8 +1,8 @@
 # 数据库迁移管理
 
-## 唯一权威工具：Ptah Compat（0.11.1）
+## 唯一权威工具：Ptah Compat（0.11.2）
 
-本项目使用 [Ptah Compat](https://github.com/stokaro/ptah/releases/tag/v0.11.1) 声明式管理数据库 Schema。
+本项目使用 [Ptah Compat](https://github.com/stokaro/ptah/releases/tag/v0.11.2) 声明式管理数据库 Schema。
 扩展、函数、触发器与表、索引统一声明在 `desired_schema.sql`，不再前后两次执行 `desired_extras.sql`。
 接管验证与对照实验见[Ptah 团队的文章](https://blog.ptah.run/posts/hci-postgresql-desired-state/)。
 
@@ -72,8 +72,8 @@ Ptah Compat 从期望状态管理扩展，无需手动重置临时库。现有 P
 
 镜像统一设置 `PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1`（保留 `lists=100`）和
 `PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1`（新库可能尚无历史工具表）；直接运行本地 CLI 时按上例设置。
-`MIRROR_MODE=on` 对所有 Alpine 阶段生效。GitHub 访问受限时可用构建参数 `PTAH_RELEASE_BASE_URL`
-指定发布镜像的基路径（其下仍为 `v0.11.1/ptah_0.11.1_linux_<arch>.tar.gz`）；下载按 Dockerfile 内固定 SHA-256 校验。
+迁移镜像直接从 Docker Hub 的 `stokaro/ptah:0.11.2` 复制 `ptah-compat`，无需下载 GitHub Release 压缩包。
+`MIRROR_MODE=on` 保留原有 Alpine 包镜像设置。
 
 ### CI 自动验证
 

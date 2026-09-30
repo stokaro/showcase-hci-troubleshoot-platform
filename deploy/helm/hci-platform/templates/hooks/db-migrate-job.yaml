@@ -47,7 +47,7 @@ spec:
       # initContainer：为 Ptah Compat dev-url 建立独立 atlas_dev 临时数据库（幂等）
       # Ptah Compat 在同版本的临时 PostgreSQL 库中预演变更，再应用到目标库
       initContainers:
-        - name: init-schema-dev
+        - name: init-atlas-dev
           image: postgres:15-alpine
           imagePullPolicy: IfNotPresent
           command: ["sh", "-c"]
@@ -55,11 +55,11 @@ spec:
             - |
               set -e
               # 临时数据库与目标库使用相同的服务器和扩展二进制。
-              psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -tc \
+              psql "$DATABASE_URL" -tc \
                 "SELECT 1 FROM pg_database WHERE datname='atlas_dev';" \
                 | grep -q 1 || \
-                psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -c "CREATE DATABASE atlas_dev;"
-              echo "Schema 临时数据库已就绪"
+                psql "$DATABASE_URL" -c "CREATE DATABASE atlas_dev;"
+              echo "初始化完成"
           env:
             - name: DATABASE_URL
               value: {{ printf "postgres://%s:%s@%s:5432/%s?sslmode=disable" .Values.config.postgresUser (.Values.secrets.postgresPassword | urlquery) .Values.config.postgresHost .Values.config.postgresDb | quote }}

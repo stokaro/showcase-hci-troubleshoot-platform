@@ -13,18 +13,7 @@
 #   DATABASE_URL - 目标数据库连接串
 #   DEV_URL      - 独立临时数据库连接串（用于预演变更，不得指向目标库）
 
-set -eu
-: "${DATABASE_URL:?必须配置 DATABASE_URL}"
-: "${DEV_URL:?DEV_URL 必须指向独立临时数据库}"
-
-apply_schema() {
-  ptah-compat schema apply \
-    --url "$DATABASE_URL" \
-    --to file:///desired_schema.sql \
-    --dev-url "$DEV_URL" \
-    --exclude "schema_migrations,alembic_version,atlas_schema_revisions" \
-    --auto-approve
-}
+set -e
 
 echo "====== HCI DB 声明式迁移 ======"
 echo "目标数据库: 已配置（连接串已脱敏）"
@@ -38,7 +27,12 @@ CORE_SCHEMA_READY=$(psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -tAc \
 if [ "$CORE_SCHEMA_READY" != "true" ]; then
   echo ""
   echo ">>> Step 0: 检测到全新或未完成初始化的数据库，执行 Ptah Compat Schema 引导"
-  apply_schema
+  ptah-compat schema apply \
+    --url "$DATABASE_URL" \
+    --to "file:///desired_schema.sql" \
+    --dev-url "$DEV_URL" \
+    --exclude "schema_migrations,alembic_version,atlas_schema_revisions" \
+    --auto-approve
   echo "✅ Step 0 完成（数据迁移依赖表已就绪）"
 else
   echo ""
@@ -54,7 +48,12 @@ echo "✅ Step 1 完成"
 # ── Step 2: Ptah Compat 声明式 Schema 最终收敛 ───────────────────────────────
 echo ""
 echo ">>> Step 2: ptah-compat schema apply（扩展/表/索引/函数/触发器）"
-apply_schema
+ptah-compat schema apply \
+  --url "$DATABASE_URL" \
+  --to "file:///desired_schema.sql" \
+  --dev-url "$DEV_URL" \
+  --exclude "schema_migrations,alembic_version,atlas_schema_revisions" \
+  --auto-approve
 echo "✅ Step 2 完成"
 
 echo ""

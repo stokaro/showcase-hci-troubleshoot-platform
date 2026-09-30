@@ -9,41 +9,16 @@
 #   database/data-migrations/    → migration-runner 管理（数据迁移）
 #
 # 本地构建测试：
-#   docker --context remote-dev-container build -f Dockerfile.migrations -t hci-db-migrate:local .
+#   docker build -f Dockerfile.migrations -t hci-db-migrate:local .
 
-ARG MIRROR_MODE=on
-
-# Stage 1: 获取 Ptah Compat 二进制（升级时同时更新版本及两种架构的 SHA-256）
-FROM alpine:3.23 AS ptah-bin
-ARG MIRROR_MODE
-ARG PTAH_VERSION=0.11.1
-ARG PTAH_RELEASE_BASE_URL=https://github.com/stokaro/ptah/releases/download
-ARG PTAH_SHA256_amd64=5c0a2bfb297fa9dec4305e76a474376b98a10ddd1a9fa4301ff2043ed3382d29
-ARG PTAH_SHA256_arm64=a66d4759e8eed518b3075410cd9051e4f6a8def6384f1378a9f41aaa0a2abdfa
-ARG TARGETARCH
-RUN if [ "$MIRROR_MODE" = "on" ]; then \
-        sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories; \
-    fi
-RUN apk add --no-cache curl tar
-WORKDIR /download
-# 国内构建可通过 PTAH_RELEASE_BASE_URL 指定发布镜像；固定摘要同样适用于镜像下载。
-RUN set -eu; \
-    case "$TARGETARCH" in \
-        amd64) checksum="$PTAH_SHA256_amd64" ;; \
-        arm64) checksum="$PTAH_SHA256_arm64" ;; \
-        *) echo "不支持的架构: $TARGETARCH" >&2; exit 1 ;; \
-    esac; \
-    archive="ptah_${PTAH_VERSION}_linux_${TARGETARCH}.tar.gz"; \
-    release="${PTAH_RELEASE_BASE_URL}/v${PTAH_VERSION}"; \
-    curl --fail --location --retry 3 "${release}/${archive}" -o "${archive}"; \
-    printf '%s  %s\n' "$checksum" "$archive" | sha256sum -c -; \
-    tar -xzf "${archive}" ptah-compat LICENSE
+# Stage 1: 获取 Ptah Compat 二进制（固定版本，升级时显式更新）
+FROM stokaro/ptah:0.11.2 AS ptah-bin
 
 # Stage 2: 基础镜像用 postgres:15-alpine（自带 psql）
 FROM postgres:15-alpine
 
 # 配置 Alpine 镜像源：本地开发用阿里云镜像，CI 海外用官方源
-ARG MIRROR_MODE
+ARG MIRROR_MODE=on
 RUN if [ "$MIRROR_MODE" = "on" ]; then \
         sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories; \
     fi
@@ -51,9 +26,8 @@ RUN if [ "$MIRROR_MODE" = "on" ]; then \
 # 吸收 Alpine 安全仓库中已发布的基础包修复。
 RUN apk upgrade --no-cache
 
-# 复制 Ptah Compat 二进制及许可证
-COPY --from=ptah-bin /download/ptah-compat /usr/local/bin/ptah-compat
-COPY --from=ptah-bin /download/LICENSE /usr/share/licenses/ptah/LICENSE
+# 复制 Ptah Compat 二进制
+COPY --from=ptah-bin /usr/local/bin/ptah-compat /usr/local/bin/ptah-compat
 
 # 保留 pgvector 的 lists=100；允许新库尚不存在被排除的历史工具表。
 ENV PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1 PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1
