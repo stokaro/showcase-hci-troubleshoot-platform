@@ -1,6 +1,6 @@
 # Database migration management
 
-## Ptah Compat in this fork
+## Ptah Compat
 
 [Ptah Compat 0.11.1](https://github.com/stokaro/ptah/releases/tag/v0.11.1)
 reconciles extensions, enums, tables, indexes, foreign keys, functions, and triggers

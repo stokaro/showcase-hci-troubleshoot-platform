@@ -1,6 +1,6 @@
 # One PostgreSQL desired state with Ptah Compat
 
-This fork replaces the Atlas schema pipeline with the released Ptah Compat
+This change replaces the Atlas schema pipeline with the released Ptah Compat
 0.11.1 binary. Extensions, functions, and triggers join tables and indexes in
 `database/desired_schema.sql`. Deployment no longer runs `desired_extras.sql`
 before and after the schema command.
@@ -64,7 +64,7 @@ and database permissions remain necessary.
 ## Original SQL retained in Ptah 0.11.1
 
 The initial 0.11.0 rehearsal required changes for Ptah defects. Version 0.11.1
-fixes those defects in the shared SQL and comparison code. This fork removes
+fixes those defects in the shared SQL and comparison code. This change removes
 the workarounds rather than asking the application to change valid SQL.
 
 | Declaration retained | Fix in Ptah 0.11.1 |
