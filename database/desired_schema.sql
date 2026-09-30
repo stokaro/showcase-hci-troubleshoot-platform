@@ -1,8 +1,8 @@
 -- ============================================================
 -- 说明：本文件是 HCI 数据库的声明式期望状态（Desired Schema）
--- 由 Ptah Compat 0.11.1 管理，开发者修改此文件后运行 ptah-compat schema diff 审查差异
+-- 由 Ptah Compat 管理（版本见 Dockerfile.migrations），修改后运行 ptah-compat schema diff 审查差异
 -- 注意：不包含 schema_migrations 表（dbmate 工具表，已废弃）
---       也不包含 atlas_schema_revisions 表（Atlas 自动管理）
+--       也不包含 atlas_schema_revisions 表（旧 Atlas 迁移记录，仅通过 --exclude 保留）
 -- ============================================================
 
 -- ============================================================

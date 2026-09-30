@@ -72,7 +72,8 @@ Ptah Compat 从期望状态管理扩展，无需手动重置临时库。现有 P
 
 镜像统一设置 `PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1`（保留 `lists=100`）和
 `PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1`（新库可能尚无历史工具表）；直接运行本地 CLI 时按上例设置。
-迁移镜像直接从 Docker Hub 的 `stokaro/ptah:0.11.2` 复制 `ptah-compat`，无需下载 GitHub Release 压缩包。
+迁移镜像直接从 Docker Hub 的 `stokaro/ptah:0.11.2` 复制 `ptah-compat`，并固定包含 amd64/arm64 的镜像索引摘要，无需下载 GitHub Release 压缩包。
+`database/licenses/ptah-LICENSE` 是 [Ptah v0.11.2 的许可证原文](https://github.com/stokaro/ptah/blob/v0.11.2/LICENSE)，随二进制复制到镜像内。
 `MIRROR_MODE=on` 保留原有 Alpine 包镜像设置。
 
 ### CI 自动验证
@@ -81,6 +82,7 @@ CI 流程自动执行：
 1. 构建与部署相同的迁移镜像，以 UID 65534 完成新建库及版本化数据迁移
 2. 保留核心表/废弃表检查，验证函数、触发器及 pgvector 行为
 3. 重复部署，读取 `schema diff --format '{{ len .Changes }}'`，要求待变更数量为零
+4. 用 PR 基线的迁移镜像建立存量库，再运行当前镜像；验证数据、`035` 历史 checksum、业务行为及零 diff。手动触发时以 `origin/main` 为基线。
 
 ## 幂等性规范（强制）
 

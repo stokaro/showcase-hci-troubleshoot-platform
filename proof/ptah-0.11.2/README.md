@@ -1,6 +1,6 @@
 # Ptah 0.11.2 接管复验（仅证明分支）
 
-本分支直接基于上游 PR #1107 的精简提交 `affad115`，生产文件与该提交一致。
+本分支直接基于上游 PR #1107 的精简提交 `84dd62a4`，生产文件与该提交一致。
 `proof/` 与本分支的 DB workflow 不进入上游 PR，避免给应用添加另一套长期维护的验证框架。
 
 通过 `workflow_dispatch` 运行 `.github/workflows/db-migration-test.yml`。验证使用正式发布的 Docker Hub 镜像及实际部署镜像，包含：
