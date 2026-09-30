@@ -27,6 +27,7 @@ RUN if [ "$MIRROR_MODE" = "on" ]; then \
 RUN apk upgrade --no-cache
 
 # 复制 Ptah Compat 二进制及 v0.11.2 原始许可证
+# 若将目标路径改为 /usr/local/bin/atlas，即可直接替换 Atlas CLI，保留原有 atlas 命令。
 COPY --from=ptah-bin /usr/local/bin/ptah-compat /usr/local/bin/ptah-compat
 COPY database/licenses/ptah-LICENSE /usr/share/licenses/ptah/LICENSE
 
