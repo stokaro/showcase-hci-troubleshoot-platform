@@ -410,7 +410,7 @@
 - **Vision 超时重试**：openai SDK 的 `APITimeoutError` / `APIConnectionError` 纳入重试条件
 - **docker-compose db-migrate 声明式数据库迁移**（PR #569）：
   - 新增 `db-migrate` 服务，与 Helm `db-migrate` Job 使用相同镜像和脚本，本地修改 Schema 后通过 volume 挂载实时生效
-  - entrypoint 串联 atlas_dev 初始化 → 数据迁移 → 函数 → Atlas schema apply → 触发器 → 种子数据加载全流程
+  - entrypoint initializes atlas_dev, runs schema/data migrations with Ptah Compat, then loads seeds
   - 新增 `make db-sync` 目标：修改 `desired_schema.sql` 后一键同步，无需重启其他服务
   - 优化 `make dev-up` 分步执行：先迁移后启动应用服务，确保 Schema 就绪后再启动后端
   - 移除 postgres 的 `init.sql` 挂载（仅首次创建生效，已由 db-migrate 替代）；清理已废弃的 dbmate `db-sync`/`db-check` 目标
@@ -537,7 +537,7 @@ hci-troubleshoot-platform/
 │   ├── admin/                # 管理控制台                    [独立 Workspace]
 │   └── shared/               # 共享类型 + API 客户端          [⚠️ 需最先完成]
 ├── adapters/                 # CLI→OpenAI 适配器
-├── database/                 # desired_schema.sql / desired_extras.sql / seeds
+├── database/                 # desired_schema.sql / data-migrations/ / seeds
 ├── deploy/                   # Docker + Helm + 可观测性
 ├── scripts/                  # 自动化脚本
 ├── tests/                    # 根级测试
@@ -552,8 +552,8 @@ hci-troubleshoot-platform/
 - `shared/` 模块修改需最高优先级完成，其他模块依赖它
 - 每个微服务（`backend/xxx-service/`）是独立的 Workspace 单元
 - 前端双应用（`customer/` + `admin/`）可并行，但共享类型变更需先完成
-- `database/desired_schema.sql` 或 `database/desired_extras.sql` 修改必须附带迁移说明
-- **给已存在数据的表新增 `NOT NULL` 列必须带 DEFAULT**：`atlas schema apply` 会直接下发
+- `database/desired_schema.sql` 或 `database/data-migrations/` 修改必须附带迁移说明
+- **给已存在数据的表新增 `NOT NULL` 列必须带 DEFAULT**：`ptah-compat schema apply` 会直接下发
   `ADD COLUMN ... NOT NULL`，无默认值时 PostgreSQL 因存量行无法填值而整体失败
   （`column "x" contains null values`），进而阻塞 db-migrate 的 PreSync hook 与环境同步
 - **`database/atlas-migrations/` 不会被打进 db-migrate 镜像**：`Dockerfile.migrations` 只
@@ -708,8 +708,8 @@ make post-merge           # 合并后集成验证
 | 禁止操作 | 原因 |
 |---------|------|
 | 删除 `backend/shared/` 下的模型定义 | 多个服务依赖 |
-| 直接修改 `database/desired_schema.sql` 或 `database/desired_extras.sql` 而不提供迁移说明 | 生产数据安全 |
-| 给存量数据表新增 `NOT NULL` 列却不带 DEFAULT | Atlas apply 失败 → db-migrate PreSync hook 失败 → Argo CD 同步卡死 |
+| 直接修改 `database/desired_schema.sql` 或 `database/data-migrations/` 而不提供迁移说明 | 生产数据安全 |
+| 给存量数据表新增 `NOT NULL` 列却不带 DEFAULT | Ptah Compat apply 失败 → db-migrate PreSync hook 失败 → Argo CD 同步卡死 |
 | 修改 `deploy/helm/` 中的 Secret 值 | 安全敏感 |
 | 在代码中硬编码 API Key / Token | 安全规范 |
 | 修改 `pyproject.toml` 的 Python 版本要求 | 全局影响 |

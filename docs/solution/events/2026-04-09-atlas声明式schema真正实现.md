@@ -6,6 +6,9 @@ last_updated: 2026-04-09
 owner: team
 ---
 
+> In this fork, Ptah Compat replaces the Atlas schema pipeline. See the [validation notes](../database/ptah-compat-validation.md). The Atlas workflow below records the original implementation.
+
+
 # Atlas 声明式 Schema 管理——真正实现
 
 ## 背景与问题

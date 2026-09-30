@@ -1,24 +1,25 @@
-name: DB Schema 声明式验证
+name: DB Schema verification
 
 on:
   pull_request:
     branches: [main]
     paths:
-      # 表结构变更时触发（Atlas 管理）
-      - "database/desired_schema.sql"
-      # Atlas 迁移与完整性哈希变化同样必须触发，避免只改 migration 绕过验证
-      - "database/atlas-migrations/**"
-      # 函数/触发器变更时触发（psql 管理）
-      - "database/desired_extras.sql"
-      # 数据迁移变更时触发（migration-runner 管理）
-      - "database/data-migrations/**"
-      # 迁移镜像 Dockerfile 变更时触发
+      - "database/**"
       - "Dockerfile.migrations"
-      # 入口脚本变更时触发
+      - "atlas.hcl"
       - "scripts/db-migrate.sh"
       - "scripts/migration-runner.sh"
-
+      - "scripts/verify-ptah-schema.sh"
+      - "deploy/docker/docker-compose.yml"
+      - "deploy/helm/hci-platform/templates/hooks/db-migrate-job.yaml"
+      - "deploy/helm/**/templates/postgres/init-configmap.yaml"
+      - ".github/workflows/db-migration-test.yml"
+  push:
+    branches: [feat/ptah-compat]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -26,10 +27,9 @@ concurrency:
 
 jobs:
   db-schema-declarative-test:
-    name: Atlas 声明式 Schema 验证
+    name: Ptah Compat schema verification
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     services:
       postgres:
         image: pgvector/pgvector:pg15
@@ -44,169 +44,37 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-
     env:
       DATABASE_URL: "postgres://hci_test:ci_test_pass@localhost:5432/hci_test?sslmode=disable"
-      # DEV_URL：独立空数据库，Atlas 用于规范化 Schema SQL
       DEV_URL: "postgres://hci_test:ci_test_pass@localhost:5432/atlas_dev?sslmode=disable"
-
+      UPGRADE_DATABASE_URL: "postgres://hci_test:ci_test_pass@localhost:5432/hci_upgrade?sslmode=disable"
+      UPGRADE_DEV_URL: "postgres://hci_test:ci_test_pass@localhost:5432/hci_upgrade_dev?sslmode=disable"
     steps:
-      - name: 检出代码
+      - name: Check out code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
-
-      # ── Step 1: 安装 Atlas CLI + 准备 dev 数据库 ─────────────────────────
-      - name: 安装 Atlas CLI
+      - name: Build the migration runtime and verification target
         run: |
-          # 与 Dockerfile.migrations 多阶段构建同源对齐（arigaio/atlas:1.1.6-community），
-          # 直接抽取镜像内 /atlas 二进制，避免依赖 atlasgo.sh 分发（该渠道已下架 1.1.6 CLI）。
-          ATLAS_IMAGE="arigaio/atlas:1.1.6-community"
-          docker create --name atlas-extract "$ATLAS_IMAGE" /dev/null
-          docker cp atlas-extract:/atlas /usr/local/bin/atlas
-          docker rm -f atlas-extract
-          chmod +x /usr/local/bin/atlas
-          atlas version
-
-      - name: 准备 Atlas dev 数据库
+          docker --context default build --build-arg MIRROR_MODE=off \
+            --target schema-test -f Dockerfile.migrations -t hci-db-migrate-verify .
+      - name: Prepare disposable databases and unchanged upstream SQL
         run: |
-          # 创建独立的 Atlas dev 数据库（Atlas 用于规范化 DDL，需与目标库同版本）
-          psql "$DATABASE_URL" -c "CREATE DATABASE atlas_dev;"
-          # 两个数据库都需要安装 extensions（desired_schema.sql 使用 vector 类型）
-          # hci_test（主库）：Atlas apply 时实际执行建表，需要 vector 类型
-          # atlas_dev（dev库）：Atlas 规范化 DDL 时也需要 vector 类型
-          for DB_URL in "$DATABASE_URL" "$DEV_URL"; do
-            psql "$DB_URL" -c "
-              CREATE EXTENSION IF NOT EXISTS vector;
-              CREATE EXTENSION IF NOT EXISTS pgcrypto;
-              CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";
-              CREATE EXTENSION IF NOT EXISTS pg_trgm;
-            "
+          for db in atlas_dev hci_upgrade hci_upgrade_dev; do
+            docker --context default run --rm --network host --entrypoint createdb \
+              hci-db-migrate-verify --maintenance-db "$DATABASE_URL" "$db"
           done
-          echo "✅ hci_test 和 atlas_dev 扩展安装完成"
-
-      # ── Step 2: 声明式 Schema 全量应用 ───────────────────────────────────
-      # 空库先由 Atlas 建表，再执行数据迁移和触发器；与 db-migrate.sh 的冷启动结果一致。
-      - name: 全量迁移（函数 → Atlas → 触发器）
+          git show 4ca96cbf27f1d8d24c63429a596849a97ab9011e:database/desired_schema.sql \
+            > "$RUNNER_TEMP/legacy_schema.sql"
+          git show 4ca96cbf27f1d8d24c63429a596849a97ab9011e:database/desired_extras.sql \
+            > "$RUNNER_TEMP/legacy_extras.sql"
+          git show 4ca96cbf27f1d8d24c63429a596849a97ab9011e:database/data-migrations/035_bundle_factory_version_metadata.sql \
+            > "$RUNNER_TEMP/legacy_migration_035.sql"
+      - name: Verify fresh install, behavior, repeat, drift repair, and upgrade
         run: |
-          echo ">>> Step 2a: 应用函数"
-          psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f database/desired_extras.sql
-
-          echo ">>> Step 2b: Atlas schema apply"
-          atlas schema apply \
-            --url "$DATABASE_URL" \
-            --to "file://database/desired_schema.sql" \
-            --dev-url "$DEV_URL" \
-            --exclude "schema_migrations,alembic_version,atlas_schema_revisions" \
-            --auto-approve
-
-          echo ">>> Step 2c: 应用触发器"
-          psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f database/desired_extras.sql
-          echo "✅ Schema 全量应用成功"
-
-          # ── Step 2d: 执行数据迁移（验证 SQL 正确性）────────────────────────────
-          echo ">>> Step 2d: 执行数据迁移"
-          for MIG_FILE in database/data-migrations/*.sql; do
-            if [ -f "$MIG_FILE" ]; then
-              echo "  执行: $MIG_FILE"
-              psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f "$MIG_FILE" || {
-                echo "❌ 数据迁移失败: $MIG_FILE"
-                exit 1
-              }
-            fi
-          done
-          echo "✅ 数据迁移执行成功"
-
-      # ── Step 3: Schema 完整性验证 ─────────────────────────────────────────
-      # 验证核心业务表存在，废弃表未被创建
-      # 注意：仅验证核心业务表，动态资源类表（dynamic_resource_*）和辅助表（bridge_execution_logs 等）由 Atlas 自动管理
-      - name: Schema 完整性检查
-        run: |
-          EXPECTED_TABLES=(
-            "user" "customer" "case" "conversation" "message"
-            "diagnostic_item" "tool_result" "audit_log" "session"
-            "system_prompt" "tool_definition" "kb_category"
-            "kbd_entry" "sop_document"
-            "environment" "assistant_evaluation"
-            # 新增核心表（PR #613 补充）
-            "kbd_image" "sop_execution" "skill_definition"
-            "migration_history" "terminal_operation" "prompt_slot"
-            "fact" "claim_evidence_link"
-          )
-          DEPRECATED_TABLES=(
-            "kb_chunk" "kb_document" "kb_sop_node" "kb_synonym"
-            "raw_cases" "knowledge_atoms" "prompt_audit" "sop_chunk"
-            # hci-sim 已迁至独立库（database/hci-sim-migrations/000001_control_plane.sql，
-            # 以 control_plane/fixture/artifact/audit schema 重建等价表），主库 agent_test_*
-            # 为迁移遗留孤儿表，backend 零引用，已从 desired_schema.sql 删除并由
-            # atlas-migrations/20260813000000_drop_orphan_agent_test_tables.sql 清理。
-            "agent_test_scenario" "agent_test_fixture_bundle"
-            "agent_test_fixture_dependency" "agent_test_fixture_provenance"
-            "agent_test_fixture_approval" "agent_test_fixture_audit"
-            "agent_test_artifact" "agent_test_artifact_scan" "agent_test_artifact_approval"
-            "agent_test_fixture_stale_outbox"
-            "agent_test_run" "agent_test_run_attempt" "agent_test_run_event"
-            "agent_test_run_result" "agent_test_runtime_instance"
-          )
-
-          MISSING=0
-          for TABLE in "${EXPECTED_TABLES[@]}"; do
-            COUNT=$(psql "$DATABASE_URL" -t -c \
-              "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public' AND tablename='$TABLE';" \
-              | tr -d '[:space:]')
-            if [ "$COUNT" -eq "1" ]; then
-              echo "  ✅ $TABLE"
-            else
-              echo "  ❌ $TABLE（缺失）"
-              MISSING=$((MISSING + 1))
-            fi
-          done
-
-          for TABLE in "${DEPRECATED_TABLES[@]}"; do
-            COUNT=$(psql "$DATABASE_URL" -t -c \
-              "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public' AND tablename='$TABLE';" \
-              | tr -d '[:space:]')
-            if [ "$COUNT" -eq "0" ]; then
-              echo "  ✅ $TABLE（正确：废弃表未创建）"
-            else
-              echo "  ❌ $TABLE（废弃表意外存在）"
-              MISSING=$((MISSING + 1))
-            fi
-          done
-
-          if [ $MISSING -gt 0 ]; then
-            echo "❌ Schema 完整性检查失败（$MISSING 项异常）"
-            exit 1
-          fi
-          echo "✅ 所有 ${#EXPECTED_TABLES[@]} 张业务表正确，${#DEPRECATED_TABLES[@]} 张废弃表未创建"
-
-      # ── Step 4: 幂等性验证 ────────────────────────────────────────────────
-      # atlas schema diff 输出为空 → 当前 DB 与期望 Schema 完全一致 → 幂等
-      - name: 幂等性验证（atlas schema diff）
-        run: |
-          # atlas schema apply 使用 --dev-url 时会 DROP SCHEMA public CASCADE 清空 atlas_dev，
-          # 导致 pgvector 注册在 public schema 的类型对象丢失（扩展条目仍在但类型消失）。
-          # 重建 atlas_dev 数据库是最可靠的恢复方式。
-          psql "$DATABASE_URL" -c "DROP DATABASE atlas_dev;"
-          psql "$DATABASE_URL" -c "CREATE DATABASE atlas_dev;"
-          psql "$DEV_URL" -c "
-            CREATE EXTENSION IF NOT EXISTS vector;
-            CREATE EXTENSION IF NOT EXISTS pgcrypto;
-            CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";
-            CREATE EXTENSION IF NOT EXISTS pg_trgm;
-          "
-
-          DIFF=$(atlas schema diff \
-            --from "$DATABASE_URL" \
-            --to "file://database/desired_schema.sql" \
-            --dev-url "$DEV_URL" \
-            --exclude "schema_migrations,alembic_version,atlas_schema_revisions" \
-            2>&1 || true)
-
-          if [ -z "$DIFF" ] || echo "$DIFF" | grep -q "Schemas are synced"; then
-            echo "✅ 幂等性验证通过：DB 与期望 Schema 完全一致，无待变更项"
-          else
-            echo "❌ 幂等性验证失败：apply 后仍存在 diff："
-            echo "$DIFF"
-            exit 1
-          fi
+          docker --context default run --rm --network host --user 65534:65534 \
+            -e DATABASE_URL -e DEV_URL -e UPGRADE_DATABASE_URL -e UPGRADE_DEV_URL \
+            -v "$RUNNER_TEMP/legacy_schema.sql:/legacy_schema.sql:ro" \
+            -v "$RUNNER_TEMP/legacy_extras.sql:/legacy_extras.sql:ro" \
+            -v "$RUNNER_TEMP/legacy_migration_035.sql:/legacy_migration_035.sql:ro" \
+            hci-db-migrate-verify

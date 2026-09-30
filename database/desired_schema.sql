@@ -1,7 +1,12 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 
 -- ============================================================
 -- 说明：本文件是 HCI 数据库的声明式期望状态（Desired Schema）
--- 由 Atlas 工具管理，开发者修改此文件后运行 atlas migrate diff 生成迁移
+-- Managed by Ptah Compat; schema apply reconciles every object in this file.
 -- 注意：不包含 schema_migrations 表（dbmate 工具表，已废弃）
 --       也不包含 atlas_schema_revisions 表（Atlas 自动管理）
 -- ============================================================
@@ -24,10 +29,7 @@
 --   vector_search: 通过 pgvector 扩展支持 1536 维向量，用于知识库语义检索和意图识别
 
 -- ============================================================
--- 扩展（由 postgres init SQL 管理，不在此处声明）
--- 依赖：uuid-ossp, pgcrypto, pg_trgm, vector
--- 见 deploy/helm/hci-platform/templates/postgres/init-configmap.yaml
--- 注意：Atlas Community 不支持在 schema 文件中声明 extensions（需要 atlas login）
+-- Extensions are declared above and managed with tables, functions, and triggers.
 -- ============================================================
 
 -- ============================================================
@@ -75,8 +77,8 @@ CREATE TABLE IF NOT EXISTS "user" (
     email varchar(255),
     user_type varchar(20) NOT NULL DEFAULT 'temporary',
     metadata jsonb DEFAULT '{}'::jsonb,
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
     last_login_at timestamptz,
     trace_id varchar(64),
     CONSTRAINT user_pkey PRIMARY KEY (user_id)
@@ -115,8 +117,8 @@ CREATE TABLE IF NOT EXISTS customer (
     region varchar(100),
     industry varchar(100),
     metadata jsonb DEFAULT '{}'::jsonb,
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
     trace_id varchar(64),
     CONSTRAINT customer_pkey PRIMARY KEY (customer_id)
 );
@@ -163,8 +165,8 @@ CREATE TABLE IF NOT EXISTS "case" (
     category varchar(100),
     assistant_type varchar(50) NOT NULL DEFAULT 'openclaw',
     metadata jsonb DEFAULT '{}'::jsonb,
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
     confirmed_at timestamptz,
     resolved_at timestamptz,
     closed_at timestamptz,
@@ -247,8 +249,8 @@ CREATE TABLE IF NOT EXISTS diagnosis_session (
     failure_code varchar(64),
     failure_message text,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT diagnosis_session_pkey PRIMARY KEY (session_id),
     CONSTRAINT fk_diagnosis_session_case_id
         FOREIGN KEY (case_id) REFERENCES "case" (case_id) ON DELETE RESTRICT,
@@ -302,8 +304,8 @@ CREATE TABLE IF NOT EXISTS collection_profile_definition (
     rejection_reason text,
     lock_version integer NOT NULL DEFAULT 1,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT collection_profile_definition_pkey PRIMARY KEY (profile_id),
     CONSTRAINT ck_collection_profile_definition_managed_by
         CHECK ((managed_by)::text = ANY ((ARRAY['manual'::varchar, 'kbd_sync'::varchar])::text[])),
@@ -359,8 +361,8 @@ CREATE TABLE IF NOT EXISTS collection_plan (
     idempotency_key varchar(128) NOT NULL,
     request_hash varchar(64) NOT NULL,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT collection_plan_pkey PRIMARY KEY (plan_id),
     CONSTRAINT fk_collection_plan_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -485,8 +487,8 @@ CREATE TABLE IF NOT EXISTS collector_definition (
     rejection_reason text,
     lock_version integer NOT NULL DEFAULT 1,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT collector_definition_pkey PRIMARY KEY (collector_id),
     CONSTRAINT ck_collector_definition_managed_by
         CHECK ((managed_by)::text = ANY ((ARRAY['manual'::varchar, 'kbd_sync'::varchar])::text[])),
@@ -563,8 +565,8 @@ CREATE TABLE IF NOT EXISTS collector_artifact (
     idempotency_key varchar(128) NOT NULL,
     request_hash varchar(64) NOT NULL,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT collector_artifact_pkey PRIMARY KEY (artifact_id),
     CONSTRAINT fk_collector_artifact_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -669,8 +671,8 @@ CREATE TABLE IF NOT EXISTS diagnosis_upload_session (
     idempotency_key varchar(128) NOT NULL,
     request_hash varchar(64) NOT NULL,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT diagnosis_upload_session_pkey PRIMARY KEY (upload_id),
     CONSTRAINT fk_diagnosis_upload_session_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -751,8 +753,8 @@ CREATE TABLE IF NOT EXISTS diagnostic_evidence_bundle (
     deleted_at timestamptz,
     version integer NOT NULL DEFAULT 1,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT diagnostic_evidence_bundle_pkey PRIMARY KEY (bundle_id),
     CONSTRAINT fk_diagnostic_evidence_bundle_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -826,12 +828,12 @@ CREATE TABLE IF NOT EXISTS diagnosis_processing_job (
     max_attempts integer NOT NULL DEFAULT 3,
     locked_by varchar(128),
     locked_at timestamptz,
-    available_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    available_at timestamptz NOT NULL DEFAULT now(),
     failure_code varchar(64),
     failure_message text,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT diagnosis_processing_job_pkey PRIMARY KEY (task_id),
     CONSTRAINT fk_diagnosis_processing_job_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -883,7 +885,7 @@ CREATE TABLE IF NOT EXISTS evidence_item (
     quality varchar(16) NOT NULL DEFAULT 'medium',
     failure_reason text,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT evidence_item_pkey PRIMARY KEY (evidence_id),
     CONSTRAINT fk_evidence_item_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -942,8 +944,8 @@ CREATE TABLE IF NOT EXISTS offline_signal_collector_mapping (
     is_enabled boolean NOT NULL DEFAULT true,
     lock_version integer NOT NULL DEFAULT 1,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT offline_signal_collector_mapping_pkey PRIMARY KEY (mapping_id),
     CONSTRAINT fk_offline_signal_collector_mapping_collector_id
         FOREIGN KEY (collector_id) REFERENCES collector_definition (collector_id) ON DELETE RESTRICT,
@@ -1010,7 +1012,7 @@ CREATE TABLE IF NOT EXISTS offline_resource_sync_state (
     last_tool_revision_id bigint NOT NULL DEFAULT 0,
     last_batch_id uuid,
     lock_version integer NOT NULL DEFAULT 1,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT now(),
     trace_id varchar(64) NOT NULL,
     CONSTRAINT offline_resource_sync_state_pkey PRIMARY KEY (state_key),
     CONSTRAINT ck_offline_resource_sync_state_cursor CHECK (
@@ -1052,10 +1054,10 @@ CREATE TABLE IF NOT EXISTS offline_resource_sync_batch (
     validation_json jsonb NOT NULL DEFAULT '[]'::jsonb,
     error_json jsonb NOT NULL DEFAULT '{}'::jsonb,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     published_at timestamptz,
     rolled_back_at timestamptz,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT offline_resource_sync_batch_pkey PRIMARY KEY (batch_id),
     CONSTRAINT ck_offline_resource_sync_batch_cursor CHECK (
         base_cursor >= 0 AND target_cursor >= base_cursor
@@ -1120,8 +1122,8 @@ CREATE TABLE IF NOT EXISTS offline_resource_sync_change (
     after_json jsonb,
     validation_json jsonb NOT NULL DEFAULT '[]'::jsonb,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT offline_resource_sync_change_pkey PRIMARY KEY (change_id),
     CONSTRAINT fk_offline_resource_sync_change_batch
         FOREIGN KEY (batch_id) REFERENCES offline_resource_sync_batch (batch_id) ON DELETE CASCADE,
@@ -1173,7 +1175,7 @@ CREATE TABLE IF NOT EXISTS offline_resource_sync_event (
     actor_id varchar(128) NOT NULL,
     details_json jsonb NOT NULL DEFAULT '{}'::jsonb,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT offline_resource_sync_event_pkey PRIMARY KEY (event_id),
     CONSTRAINT fk_offline_resource_sync_event_batch
         FOREIGN KEY (batch_id) REFERENCES offline_resource_sync_batch (batch_id) ON DELETE RESTRICT,
@@ -1222,7 +1224,7 @@ CREATE TABLE IF NOT EXISTS evidence_assessment (
     ready_for_diagnosis boolean NOT NULL,
     calculation_details jsonb NOT NULL DEFAULT '{}'::jsonb,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT evidence_assessment_pkey PRIMARY KEY (assessment_id),
     CONSTRAINT fk_evidence_assessment_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -1259,7 +1261,7 @@ CREATE TABLE IF NOT EXISTS diagnosis_run (
     agent_version varchar(32) NOT NULL,
     model_version varchar(64),
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     completed_at timestamptz,
     CONSTRAINT diagnosis_run_pkey PRIMARY KEY (run_id),
     CONSTRAINT fk_diagnosis_run_session_id
@@ -1291,7 +1293,7 @@ CREATE TABLE IF NOT EXISTS signal_evaluation (
     evidence_refs jsonb NOT NULL DEFAULT '[]'::jsonb,
     matcher_snapshot jsonb,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT signal_evaluation_pkey PRIMARY KEY (evaluation_id),
     CONSTRAINT fk_signal_evaluation_run_id
         FOREIGN KEY (run_id) REFERENCES diagnosis_run (run_id) ON DELETE CASCADE,
@@ -1318,7 +1320,7 @@ CREATE TABLE IF NOT EXISTS diagnosis_candidate (
     signal_coverage numeric(7,6) NOT NULL DEFAULT 0,
     kbd_snapshot jsonb NOT NULL,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT diagnosis_candidate_pkey PRIMARY KEY (candidate_id),
     CONSTRAINT fk_diagnosis_candidate_run_id
         FOREIGN KEY (run_id) REFERENCES diagnosis_run (run_id) ON DELETE CASCADE,
@@ -1344,8 +1346,8 @@ CREATE TABLE IF NOT EXISTS supplement_plan (
     expected_duration_minutes integer NOT NULL DEFAULT 0,
     status varchar(16) NOT NULL DEFAULT 'ready',
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT supplement_plan_pkey PRIMARY KEY (supplement_plan_id),
     CONSTRAINT fk_supplement_plan_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -1387,8 +1389,8 @@ CREATE TABLE IF NOT EXISTS diagnosis_report (
     report_schema_version varchar(32) NOT NULL,
     version integer NOT NULL DEFAULT 1,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT diagnosis_report_pkey PRIMARY KEY (report_id),
     CONSTRAINT fk_diagnosis_report_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -1444,7 +1446,7 @@ CREATE TABLE IF NOT EXISTS diagnosis_report_revision (
     before_snapshot jsonb NOT NULL,
     after_snapshot jsonb NOT NULL,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT diagnosis_report_revision_pkey PRIMARY KEY (revision_id),
     CONSTRAINT fk_diagnosis_report_revision_report_id
         FOREIGN KEY (report_id) REFERENCES diagnosis_report (report_id) ON DELETE CASCADE
@@ -1465,7 +1467,7 @@ CREATE TABLE IF NOT EXISTS diagnosis_legal_hold_audit (
     reason text NOT NULL,
     affected_bundle_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT diagnosis_legal_hold_audit_pkey PRIMARY KEY (audit_id),
     CONSTRAINT fk_diagnosis_legal_hold_audit_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -1493,8 +1495,8 @@ CREATE TABLE IF NOT EXISTS diagnosis_deletion_job (
     deletion_results jsonb NOT NULL DEFAULT '{}'::jsonb,
     failure_message text,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT diagnosis_deletion_job_pkey PRIMARY KEY (deletion_id),
     CONSTRAINT fk_diagnosis_deletion_job_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE CASCADE,
@@ -1527,7 +1529,7 @@ CREATE TABLE IF NOT EXISTS diagnosis_management_audit (
     result varchar(16) NOT NULL DEFAULT 'success',
     details jsonb NOT NULL DEFAULT '{}'::jsonb,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT diagnosis_management_audit_pkey PRIMARY KEY (audit_id),
     CONSTRAINT fk_diagnosis_management_audit_session_id
         FOREIGN KEY (session_id) REFERENCES diagnosis_session (session_id) ON DELETE SET NULL,
@@ -1559,9 +1561,9 @@ CREATE TABLE IF NOT EXISTS environment (
     case_id varchar(20) NOT NULL,
     env_type varchar(50) NOT NULL,
     env_data jsonb NOT NULL,
-    collected_at timestamptz DEFAULT CURRENT_TIMESTAMP,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    collected_at timestamptz DEFAULT now(),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     trace_id varchar(64),
     CONSTRAINT fk_environment_case_id FOREIGN KEY (case_id) REFERENCES "case" (case_id) ON DELETE CASCADE,
     CONSTRAINT environment_pkey PRIMARY KEY (environment_id)
@@ -1609,7 +1611,7 @@ CREATE TABLE IF NOT EXISTS assistant_evaluation (
     composite_score smallint,
     score_breakdown jsonb,
     calculated_at timestamptz,
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
     trace_id varchar(64),
     CONSTRAINT fk_assistant_evaluation_case_id FOREIGN KEY (case_id) REFERENCES "case" (case_id) ON DELETE CASCADE,
     -- D-006: 评分范围约束，防止 ORM/前端写入非法值
@@ -1664,7 +1666,7 @@ CREATE TABLE IF NOT EXISTS conversation (
     category_id varchar(64),
     category_l1 varchar(100),
     category_l2 varchar(200),
-    started_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    started_at timestamptz DEFAULT now(),
     ended_at timestamptz,
     message_count integer DEFAULT 0,
     metadata jsonb DEFAULT '{}'::jsonb,
@@ -1752,7 +1754,7 @@ CREATE TABLE IF NOT EXISTS message (
     command text,
     command_warning text,
     metadata jsonb DEFAULT '{}'::jsonb,
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
     trace_id varchar(64),
     tool_call_id text,  -- role=tool_result 时关联对应的 tool_call 请求 ID（OpenAI tool_call_id 格式）
     CONSTRAINT fk_message_conversation_id FOREIGN KEY (conversation_id) REFERENCES conversation (conversation_id) ON DELETE CASCADE,
@@ -1806,8 +1808,8 @@ CREATE TABLE IF NOT EXISTS diagnostic_item (
     content jsonb NOT NULL DEFAULT '{}'::jsonb,
     probability real,
     status varchar(20) NOT NULL DEFAULT 'pending',
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     trace_id varchar(64),
     CONSTRAINT fk_diagnostic_item_conversation_id FOREIGN KEY (conversation_id) REFERENCES conversation (conversation_id) ON DELETE CASCADE,
     -- D-004: 防止重复 (conversation_id, type, seq) 组合导致 Prompt 构建混乱
@@ -1972,8 +1974,8 @@ CREATE TABLE IF NOT EXISTS system_prompt (
     content_template text NOT NULL,
     version varchar(20) NOT NULL DEFAULT '1.0',
     is_active boolean DEFAULT true,
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
     CONSTRAINT system_prompt_pkey PRIMARY KEY (id),
     -- name 字段天然唯一（如 base_identity_v1、s0_intent_recognition_v1），加唯一约束以支持种子幂等加载
     CONSTRAINT system_prompt_name_key UNIQUE (name)
@@ -2170,7 +2172,7 @@ CREATE TABLE IF NOT EXISTS session (
     case_id varchar(20) NOT NULL,
     user_id uuid NOT NULL,
     metadata jsonb DEFAULT '{}'::jsonb,
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
     expires_at timestamptz,
     trace_id varchar(64),
     CONSTRAINT fk_session_case_id FOREIGN KEY (case_id) REFERENCES "case" (case_id) ON DELETE CASCADE,
@@ -2215,8 +2217,8 @@ CREATE TABLE IF NOT EXISTS tool_definition (
     risk_level smallint NOT NULL DEFAULT 1,
     is_active boolean DEFAULT true,
     version varchar(20) DEFAULT '1.0',
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
     -- D-006: 工具风险等级约束：1=只读安全 / 2=需用户确认 / 3=高危
     CONSTRAINT chk_tool_definition_risk_level CHECK (risk_level >= 1 AND risk_level <= 3),
     -- D-007: 工具命名规范约束：snake_case，首字符小写字母，仅含小写字母/数字/下划线，
@@ -2268,8 +2270,8 @@ CREATE TABLE IF NOT EXISTS skill_definition (
     is_active boolean DEFAULT true,
     assets_json jsonb NOT NULL DEFAULT '[]',
     references_json jsonb NOT NULL DEFAULT '[]',
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
     CONSTRAINT skill_definition_pkey PRIMARY KEY (id)
 );
 
@@ -2306,7 +2308,7 @@ CREATE TABLE IF NOT EXISTS kb_category (
     keywords text[],
     source varchar(50) DEFAULT 'manual',
     version varchar(20) DEFAULT '1.0',
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
     code varchar(64) UNIQUE,
     domain varchar(100),
     path_labels jsonb DEFAULT '[]'::jsonb,
@@ -2365,8 +2367,8 @@ CREATE TABLE IF NOT EXISTS kbd_review_owner (
     id bigserial NOT NULL,
     name varchar(100) NOT NULL,
     email varchar(255),
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT kbd_review_owner_pkey PRIMARY KEY (id),
     CONSTRAINT uq_kbd_review_owner_email UNIQUE (email)
 );
@@ -2413,7 +2415,7 @@ CREATE TABLE IF NOT EXISTS kbd_entry (
     content_md text,
     content_raw text,
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-    category_id varchar(32),
+    category_id varchar(64),
     ai_category_id varchar(32),
     ai_category_conf double precision,
     ai_category_reason text,
@@ -2540,10 +2542,10 @@ CREATE TABLE IF NOT EXISTS kbd_batch_job (
     work_failed_count integer NOT NULL DEFAULT 0,
     retry_of_batch_id uuid,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     started_at timestamptz,
     completed_at timestamptz,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT kbd_batch_job_pkey PRIMARY KEY (batch_id),
     CONSTRAINT fk_kbd_batch_job_retry_of
         FOREIGN KEY (retry_of_batch_id) REFERENCES kbd_batch_job (batch_id) ON DELETE RESTRICT,
@@ -2630,10 +2632,10 @@ CREATE TABLE IF NOT EXISTS kbd_batch_job_item (
     work_completed_count integer NOT NULL DEFAULT 0,
     work_failed_count integer NOT NULL DEFAULT 0,
     trace_id varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     started_at timestamptz,
     completed_at timestamptz,
-    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT kbd_batch_job_item_pkey PRIMARY KEY (item_id),
     CONSTRAINT fk_kbd_batch_job_item_batch_id
         FOREIGN KEY (batch_id) REFERENCES kbd_batch_job (batch_id) ON DELETE CASCADE,
@@ -2760,7 +2762,7 @@ CREATE TABLE IF NOT EXISTS kbd_image (
     mime_type varchar(50),
     width int,
     height int,
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
     CONSTRAINT kbd_image_pkey PRIMARY KEY (id),
     CONSTRAINT fk_kbd_image_kbd_entry_id FOREIGN KEY (kbd_entry_id) REFERENCES kbd_entry (id) ON DELETE CASCADE,
     CONSTRAINT kbd_image_kbd_entry_id_seq_key UNIQUE (kbd_entry_id, seq)
@@ -2788,7 +2790,7 @@ CREATE INDEX IF NOT EXISTS idx_kbd_image_kbd_entry_id ON kbd_image (kbd_entry_id
 CREATE TABLE IF NOT EXISTS sop_document (
     id serial NOT NULL,
     source_id varchar(100) UNIQUE,
-    category_id varchar(32),
+    category_id varchar(64),
     title varchar(500),
     content_md text,
     docx_hash varchar(64),
@@ -2871,7 +2873,7 @@ CREATE TABLE IF NOT EXISTS sop_execution (
     status varchar(16) NOT NULL DEFAULT 'active',
     context_variables jsonb NOT NULL DEFAULT '{}'::jsonb,
     completed_steps jsonb NOT NULL DEFAULT '[]'::jsonb,
-    pending_variable_name varchar(64) DEFAULT NULL,
+    pending_variable_name varchar(64),
     execution_log jsonb NOT NULL DEFAULT '[]'::jsonb,
     trace_id varchar(64),
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -2928,7 +2930,7 @@ CREATE TABLE IF NOT EXISTS terminal_operation (
     content_clean text,
     exit_code integer,
     diagnostic_stage varchar(10),
-    created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz DEFAULT now(),
     trace_id varchar(64),
     CONSTRAINT terminal_operation_pkey PRIMARY KEY (id)
 );
@@ -2972,7 +2974,7 @@ CREATE TABLE IF NOT EXISTS bridge_execution_logs (
     event          varchar(64),
     message        text,
     extra          jsonb,
-    created_at     timestamptz DEFAULT CURRENT_TIMESTAMP,
+    created_at     timestamptz DEFAULT now(),
     exec_id        varchar(64),
     command        text,
     exit_code      integer,
@@ -2986,7 +2988,7 @@ CREATE TABLE IF NOT EXISTS bridge_execution_logs (
     ,bridge_instance_id varchar(128)
     ,seq            bigint
     ,event_time     timestamptz
-    ,observed_time  timestamptz DEFAULT CURRENT_TIMESTAMP
+    ,observed_time  timestamptz DEFAULT now()
     ,span_id        varchar(16)
     ,trace_flags    varchar(2)
     ,conversation_id uuid
@@ -3349,7 +3351,7 @@ CREATE TABLE IF NOT EXISTS fact (
     conflict boolean NOT NULL DEFAULT false,
     collected_at timestamptz,
     trace_id varchar(64),
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT fact_pkey PRIMARY KEY (id),
     -- P0-3 修复：添加 case 外键约束，防止证据链孤岛（工单删除时级联清理事实）
     CONSTRAINT fk_fact_case_id FOREIGN KEY (case_id) REFERENCES "case" (case_id) ON DELETE CASCADE
@@ -3386,7 +3388,7 @@ CREATE TABLE IF NOT EXISTS claim_evidence_link (
     fact_id varchar(36) NOT NULL,
     relation varchar(30) NOT NULL,
     confidence numeric(4,3) NOT NULL DEFAULT 1.000,
-    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT fk_claim_evidence_link_fact_id FOREIGN KEY (fact_id) REFERENCES fact (id) ON DELETE CASCADE,
     -- P0-4 修复：添加 case 外键约束，防止证据链悬空（工单删除时级联清理）
     CONSTRAINT fk_claim_evidence_link_case_id FOREIGN KEY (case_id) REFERENCES "case" (case_id) ON DELETE CASCADE,
@@ -3615,7 +3617,7 @@ CREATE INDEX IF NOT EXISTS idx_signal_failure_trace_id ON signal_failure_extract
 -- 用于跟踪每个 Bundle 使用的工厂版本，支持自动迁移
 CREATE TABLE IF NOT EXISTS bundle_metadata (
     id SERIAL PRIMARY KEY,
-    kbd_id INTEGER NOT NULL REFERENCES kbd_entry(id) ON DELETE CASCADE,
+    kbd_id BIGINT NOT NULL REFERENCES kbd_entry(id) ON DELETE CASCADE,
     support_id VARCHAR(20) NOT NULL,
     bundle_digest VARCHAR(128) NOT NULL,
     factory_version VARCHAR(50) NOT NULL,
@@ -3824,3 +3826,135 @@ COMMENT ON COLUMN vm_console_audit_event.actor_user_id IS '操作者账号（FK�
 
 CREATE INDEX IF NOT EXISTS idx_diagnosis_management_audit_actor_user ON diagnosis_management_audit (actor_user_id);
 CREATE INDEX IF NOT EXISTS idx_vm_console_audit_event_actor_user ON vm_console_audit_event (actor_user_id);
+
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION fn_update_conversation_message_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE conversation SET message_count = message_count + 1
+            WHERE conversation_id = NEW.conversation_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE conversation SET message_count = GREATEST(message_count - 1, 0)
+            WHERE conversation_id = OLD.conversation_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION generate_case_id()
+RETURNS VARCHAR AS $$
+DECLARE
+    v_today VARCHAR(8);
+    v_seq   INTEGER;
+BEGIN
+    v_today := TO_CHAR(CURRENT_DATE, 'YYYYMMDD');
+    -- 事务级排他锁（双参数，无 int32 哈希碰撞风险）：不同天并行，同天串行
+    PERFORM pg_advisory_xact_lock(hashtext('generate_case_id'), v_today::integer);
+    SELECT COALESCE(MAX(CAST(SUBSTRING(case_id FROM 10 FOR 5) AS INTEGER)), 0) + 1
+        INTO v_seq FROM "case"
+        WHERE case_id LIKE 'Q' || v_today || '%';
+    RETURN 'Q' || v_today || LPAD(v_seq::TEXT, 5, '0');
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_user_updated_at
+        BEFORE UPDATE ON "user"
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_customer_updated_at
+        BEFORE UPDATE ON customer
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_case_updated_at
+        BEFORE UPDATE ON "case"
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_diagnosis_session_updated_at
+        BEFORE UPDATE ON diagnosis_session
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_collection_plan_updated_at
+        BEFORE UPDATE ON collection_plan
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_collection_profile_definition_updated_at
+        BEFORE UPDATE ON collection_profile_definition
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_collector_definition_updated_at
+        BEFORE UPDATE ON collector_definition
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_collector_artifact_updated_at
+        BEFORE UPDATE ON collector_artifact
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_vm_console_capture_updated_at
+        BEFORE UPDATE ON vm_console_capture
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_effect_verification_updated_at
+        BEFORE UPDATE ON effect_verification
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_diagnosis_upload_session_updated_at
+        BEFORE UPDATE ON diagnosis_upload_session
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_diagnostic_evidence_bundle_updated_at
+        BEFORE UPDATE ON diagnostic_evidence_bundle
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_diagnosis_processing_job_updated_at
+        BEFORE UPDATE ON diagnosis_processing_job
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_offline_signal_mapping_updated_at
+        BEFORE UPDATE ON offline_signal_collector_mapping
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_supplement_plan_updated_at
+        BEFORE UPDATE ON supplement_plan
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_diagnosis_report_updated_at
+        BEFORE UPDATE ON diagnosis_report
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_diagnosis_deletion_job_updated_at
+        BEFORE UPDATE ON diagnosis_deletion_job
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_conversation_message_count
+        AFTER INSERT OR DELETE ON message
+        FOR EACH ROW EXECUTE FUNCTION fn_update_conversation_message_count();
+
+CREATE TRIGGER update_diagnostic_item_updated_at
+        BEFORE UPDATE ON diagnostic_item
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_kbd_entry_updated_at
+        BEFORE UPDATE ON kbd_entry
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_kbd_batch_job_updated_at
+        BEFORE UPDATE ON kbd_batch_job
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_kbd_batch_job_item_updated_at
+        BEFORE UPDATE ON kbd_batch_job_item
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_sop_document_updated_at
+        BEFORE UPDATE ON sop_document
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- PostgreSQL index storage parameters are retained with PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1.

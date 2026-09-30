@@ -38,7 +38,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_bundle_metadata_updated_at
+CREATE OR REPLACE TRIGGER update_bundle_metadata_updated_at
     BEFORE UPDATE ON bundle_metadata
     FOR EACH ROW
     EXECUTE FUNCTION update_bundle_metadata_updated_at();

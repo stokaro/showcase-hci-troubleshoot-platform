@@ -10,6 +10,11 @@ owner: team
 
 # Agent 可靠性改造任务清单
 
+> This fork's schema deployment uses Ptah Compat for the complete desired state.
+> The [verification report](../../solution/database/ptah-compat-validation.md)
+> records the SQL adaptations and upgrade checks. Application reliability tasks
+> below retain their upstream status; these database checks do not close them.
+
 > **关联方案** → [Agent可靠性三方案对比分析](../../solution/agent/02-架构设计/Agent可靠性三方案对比分析.md)
 >
 > **执行策略**："方案 C 为魂，方案 B 为骨，方案 A 为理"融合落地。

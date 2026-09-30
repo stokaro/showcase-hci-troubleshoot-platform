@@ -1,109 +1,57 @@
-# 数据库迁移管理
+# Database migration management
 
-## 唯一权威工具：Atlas（自 v6.3 起）
+## Ptah Compat in this fork
 
-本项目使用 [Atlas](https://atlasgo.io) 声明式管理数据库 Schema 版本。
+[Ptah Compat 0.11.0](https://github.com/stokaro/ptah/releases/tag/v0.11.0)
+reconciles extensions, enums, tables, indexes, foreign keys, functions, and triggers
+from `database/desired_schema.sql`. The migration image no longer applies
+`desired_extras.sql` before and after the schema command.
 
-> ⚠️ **dbmate 迁移链已于 2026-04-08 彻底废弃。**
-> `database/migrations/` 下的文件仅作历史档案，不再被任何 K8s Job 执行。
-> 所有 schema 变更必须：
-> 1. 修改 `database/desired_schema.sql`（期望状态，唯一权威）
-> 2. 运行 `atlas migrate diff` 生成迁移文件
-> 3. 提交 PR，CI 自动验证
+Read the [migration and validation notes](../docs/solution/database/ptah-compat-validation.md)
+for the measured results, required SQL adjustments, and a reproducible test.
 
-## 目录结构
-
-```
-database/
-  desired_schema.sql           ← 期望 Schema（唯一权威，Atlas 声明式管理）
-  desired_extras.sql            ← 函数/触发器（psql 幂等执行）
-  data-migrations/              ← 版本化数据迁移（新增，详见下文）
-    001_xxx.sql
-    002_yyy.sql
-  atlas-migrations/             ← Atlas 迁移文件目录（仅 Schema）
-    20260408000000_baseline.sql ← baseline（接管时快照）
-    atlas.sum                   ← 完整性校验文件（禁止手动修改）
-  seeds/                        ← 业务种子数据（与迁移工具无关）
-    01_tool_definitions.sql     ← 初始化 tool_definition 表
-    02_system_prompts.sql       ← 初始化 system_prompt 表
-    03_skill_definitions.sql    ← 初始化 skill_definition 表
-
-docs/archive/db-migrations-history/
-  migrations/                   ← 历史 dbmate 迁移文件（只读归档，v6.3 前）
+```sh
+export PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1
+export PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1
+ptah-compat schema diff --env local
+ptah-compat schema apply --env local --auto-approve
 ```
 
-## Atlas 工作流
+`DATABASE_URL` names the target database. `DEV_URL` must name a separate,
+disposable database with the same PostgreSQL version and pgvector installed on
+the server. Ptah creates the declared extensions in the databases. No extension
+bootstrap or manual scratch-database reset is needed between commands.
 
-### 修改 Schema（新增表/字段/索引）
+`make db-sync`, Docker Compose, and the Helm PreSync Job use the same migration
+image. A fresh database first receives the complete desired schema. The entrypoint
+then runs the existing versioned data migrations and reconciles the schema again.
+An existing database runs its data migrations before the final schema reconciliation.
 
-```bash
-# 1. 修改期望 schema（唯一权威入口）
-vim database/desired_schema.sql
+## File ownership
 
-# 2. 生成迁移文件（需本地 postgres 容器运行）
-export DATABASE_URL="postgres://postgres:postgres@localhost:5432/hci_dev?sslmode=disable"
-atlas migrate diff --env local <migration-name>
+- `desired_schema.sql` declares the complete PostgreSQL schema.
+- `data-migrations/` holds versioned data changes and legacy repairs.
+- `data-migrations/040_preserve_legacy_extras_repairs.sql` preserves the repairs
+  previously mixed into `desired_extras.sql`, including interrupted batch jobs
+  and obsolete Alembic trigger cleanup.
+- `atlas-migrations/` and `atlas.sum` remain unchanged historical artifacts.
+  The deployment image does not replay them.
+- `tests/` verifies the desired objects, trigger behavior, idempotence, drift
+  repair, and upgrades from the upstream schema.
 
-# 3. 审查生成的迁移文件
-cat database/atlas-migrations/<新文件>.sql
-
-# 4. 提交（迁移文件 + desired_schema.sql 必须同一 commit）
-git add database/desired_schema.sql database/atlas-migrations/
-```
-
-### 本地应用迁移
-
-```bash
-# 应用所有待执行迁移
-atlas migrate apply --env local
-
-# 查看迁移状态
-atlas migrate status --env local
-
-# 验证 schema 与 desired_schema.sql 一致
-atlas schema diff --env local
-```
-
-### CI 自动验证
-
-CI 流程自动执行：
-1. `atlas migrate lint` — 检测破坏性变更
-2. 全量执行 baseline + 所有迁移文件
-3. 验证最终 schema 与 `desired_schema.sql` 一致
-
-## 幂等性规范（强制）
-
-所有迁移脚本**必须可安全重复执行**：
-
-| 操作类型 | 要求 |
-|----------|------|
-| `CREATE TABLE` | 必须加 `IF NOT EXISTS` |
-| `ALTER TABLE ADD COLUMN` | 必须加 `IF NOT EXISTS` |
-| `CREATE INDEX` | 必须加 `IF NOT EXISTS` |
-| `CREATE TRIGGER` | `DROP TRIGGER IF EXISTS` 后再创建 |
-| `DROP TABLE` | 必须加 `IF EXISTS` |
-
-## 铁律
-
-1. **平台库 desired_schema.sql 是唯一权威** — `hci_troubleshoot` 表结构以此为准；`hci_sim` 只认 `hci-sim-migrations/`，两者不可交叉扫描
-2. **已提交的 Atlas 迁移文件永远不修改** — 如需修订，新建迁移文件
-3. **atlas.sum 禁止手动修改** — 由 `atlas migrate hash` 自动生成
-4. **migrations/ 目录只读归档** — 禁止新增 dbmate 文件
-5. **desired_schema.sql + atlas-migrations/ 必须同一 commit 提交**
-
-## 多环境说明
-
-- **全新 DB**（测试/本地）：`atlas migrate apply --env local`（从 baseline 开始全量执行）
-- **已有 DB**（存量 dev/staging/prod）：`atlas migrate apply --env prod --baseline 20260408000000`（baseline 跳过，从后续迁移开始）
-- **CI 环境**：`atlas migrate apply --env ci`（全量执行，每次 PR 验证）
+Edit the desired schema for object changes. Add a data migration for data repairs.
+Review the diff before applying a production change. Production deployment still
+runs through the existing Job.
 
 ## hci-sim 控制面 Schema（阶段 C/D）
 
 `hci_sim` 数据库的控制面 metadata 按 `control_plane`、`fixture`、`artifact`、`audit` schema 管理：Scenario、不可变 Fixture Bundle、依赖、provenance、审批、审计、TestRun、Attempt、Event、Result 和 Runtime capability。它们只保存精确 revision、受控对象 URI、digest/哈希、状态与审计关联；**禁止**保存原始客户 Artifact、任意外部 URL 或可重放的 Lease 明文。真实 Artifact 进入具备审批、版本与保留策略的对象存储，Runtime 只能读取 `published` Bundle。
 
-当前主库中的 `public.agent_test_*` 是迁移前存量兼容源，复制脚本默认只 inventory；完成 copy/verify/switch 和观察窗口前不得 DROP。独立迁移入口为 `database/hci-sim-migrations/000001_control_plane.sql`，不由平台 Atlas Job 执行。
+当前主库中的 `public.agent_test_*` 是迁移前存量兼容源，复制脚本默认只 inventory；完成 copy/verify/switch 和观察窗口前不得 DROP。独立迁移入口为 `database/hci-sim-migrations/000001_control_plane.sql`，不由平台 Ptah Compat Job 执行。
 
-> **历史说明**：`schema_migrations` 表为旧 dbmate 工具表（已废弃）。Atlas 使用 `atlas_schema_revisions` 表跟踪版本。
+> The old dbmate `schema_migrations` and Atlas `atlas_schema_revisions` tables
+> are historical tool state. Ptah reconciles the desired schema directly; the
+> existing `migration_history` table tracks versioned data migrations.
 
 ---
 

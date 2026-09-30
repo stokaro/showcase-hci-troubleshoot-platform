@@ -1,3 +1,8 @@
+> This fork validates Ptah Compat against the actual PostgreSQL/pgvector schema.
+> See the [migration and verification notes](docs/solution/database/ptah-compat-validation.md).
+> The migration image manages extensions, functions, and triggers in the same
+> desired state as tables and indexes.
+
 # HCI 智能排障平台
 
 > 版本 **v2.23.0**（以 `pyproject.toml` 为准）· 2026-08-07
