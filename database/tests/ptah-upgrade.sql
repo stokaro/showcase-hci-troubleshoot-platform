@@ -1,8 +1,8 @@
--- Add representative existing rows and obsolete Alembic objects to the upstream schema.
+-- 在上游 Schema 中加入代表性存量数据及废弃的 Alembic 对象。
 INSERT INTO "user"(client_id,metadata)
 VALUES('ptah-upgrade-sentinel','{"preserve":"user-data"}');
 INSERT INTO kbd_entry(support_id,title)
-VALUES('ptah-upgrade-kbd','Existing knowledge article');
+VALUES('ptah-upgrade-kbd','存量知识条目');
 INSERT INTO bundle_metadata(kbd_id,support_id,bundle_digest,factory_version,compiler_revision)
 SELECT id,support_id,'ptah-upgrade-digest','original-factory','original-revision'
 FROM kbd_entry WHERE support_id='ptah-upgrade-kbd';

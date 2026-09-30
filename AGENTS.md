@@ -410,7 +410,7 @@
 - **Vision 超时重试**：openai SDK 的 `APITimeoutError` / `APIConnectionError` 纳入重试条件
 - **docker-compose db-migrate 声明式数据库迁移**（PR #569）：
   - 新增 `db-migrate` 服务，与 Helm `db-migrate` Job 使用相同镜像和脚本，本地修改 Schema 后通过 volume 挂载实时生效
-  - entrypoint initializes atlas_dev, runs schema/data migrations with Ptah Compat, then loads seeds
+  - entrypoint 串联 atlas_dev 初始化 → Ptah Compat Schema/数据迁移 → 种子数据加载全流程
   - 新增 `make db-sync` 目标：修改 `desired_schema.sql` 后一键同步，无需重启其他服务
   - 优化 `make dev-up` 分步执行：先迁移后启动应用服务，确保 Schema 就绪后再启动后端
   - 移除 postgres 的 `init.sql` 挂载（仅首次创建生效，已由 db-migrate 替代）；清理已废弃的 dbmate `db-sync`/`db-check` 目标

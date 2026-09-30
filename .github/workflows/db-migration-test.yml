@@ -1,4 +1,4 @@
-name: DB Schema verification
+name: DB Schema 声明式验证
 
 on:
   pull_request:
@@ -14,8 +14,6 @@ on:
       - "deploy/helm/hci-platform/templates/hooks/db-migrate-job.yaml"
       - "deploy/helm/**/templates/postgres/init-configmap.yaml"
       - ".github/workflows/db-migration-test.yml"
-  push:
-    branches: [feat/ptah-compat]
   workflow_dispatch:
 
 permissions:
@@ -27,7 +25,7 @@ concurrency:
 
 jobs:
   db-schema-declarative-test:
-    name: Ptah Compat schema verification
+    name: Ptah Compat 声明式 Schema 验证
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -50,15 +48,15 @@ jobs:
       UPGRADE_DATABASE_URL: "postgres://hci_test:ci_test_pass@localhost:5432/hci_upgrade?sslmode=disable"
       UPGRADE_DEV_URL: "postgres://hci_test:ci_test_pass@localhost:5432/hci_upgrade_dev?sslmode=disable"
     steps:
-      - name: Check out code
+      - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
-      - name: Build the migration runtime and verification target
+      - name: 构建迁移镜像和验证阶段
         run: |
           docker --context default build --build-arg MIRROR_MODE=off \
             --target schema-test -f Dockerfile.migrations -t hci-db-migrate-verify .
-      - name: Prepare disposable databases and unchanged upstream SQL
+      - name: 准备临时数据库和原始上游 SQL
         run: |
           for db in atlas_dev hci_upgrade hci_upgrade_dev; do
             docker --context default run --rm --network host --entrypoint createdb \
@@ -70,7 +68,7 @@ jobs:
             > "$RUNNER_TEMP/legacy_extras.sql"
           git show 4ca96cbf27f1d8d24c63429a596849a97ab9011e:database/data-migrations/035_bundle_factory_version_metadata.sql \
             > "$RUNNER_TEMP/legacy_migration_035.sql"
-      - name: Verify fresh install, behavior, repeat, drift repair, and upgrade
+      - name: 验证新建库、业务行为、重复部署、漂移修复和存量升级
         run: |
           docker --context default run --rm --network host --user 65534:65534 \
             -e DATABASE_URL -e DEV_URL -e UPGRADE_DATABASE_URL -e UPGRADE_DEV_URL \

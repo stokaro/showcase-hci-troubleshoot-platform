@@ -1,6 +1,6 @@
--- Move the legacy repairs from desired_extras.sql into versioned data migrations.
--- Fresh databases already declare these objects in desired_schema.sql.
--- Existing databases still need the interrupted-job data conversion before schema apply.
+-- 将原 desired_extras.sql 中的遗留修复移入版本化数据迁移。
+-- 新库已在 desired_schema.sql 中声明相关对象。
+-- 存量库仍需在 Schema 收敛前完成中断任务的数据转换。
 
 DO $$ BEGIN
   -- 清理 message 表 Alembic 遗留触发器（避免 message_count 双倍计数）
@@ -143,11 +143,11 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Preserve tool-call roles in existing conversation history before schema apply.
--- Fresh databases already have these values in desired_schema.sql.
--- A partial legacy installation may not have the enum yet.
+-- Schema 收敛前保留存量对话历史中的工具调用角色。
+-- 新库的 desired_schema.sql 已声明这些枚举值。
+-- 未完成初始化的遗留环境可能尚无该枚举。
 DO $$ BEGIN
-  -- Only extend the enum when an existing installation already declares it.
+  -- 仅在存量环境已声明该枚举时补齐枚举值。
   IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'message_role') THEN
     -- 补齐 tool_call 角色（ReAct 工具调用请求，含 tool_calls JSON）
     IF NOT EXISTS (

@@ -9,6 +9,10 @@ metadata:
     {{- include "hci.labels" . | nindent 4 }}
 data:
   init.sql: |
-    -- Schema objects are reconciled by the db-migrate Job from desired_schema.sql.
+    -- HCI Troubleshoot Platform - Database Initialization Script
+    -- Version: 2.0 (AI Assistant Pod Pool)
+    -- Database: PostgreSQL 15
+
+    -- Schema 对象由 db-migrate Job 从 desired_schema.sql 声明式管理。
     SET timezone = 'UTC';
 {{- end }}

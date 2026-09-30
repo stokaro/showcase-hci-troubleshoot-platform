@@ -1,4 +1,17 @@
-# The released Ptah Compat binary manages the complete PostgreSQL desired state.
+# db-migrate 迁移镜像（多阶段构建）
+# 工作方式（声明式 + 幂等）：
+#   0. 全新空库先由 Ptah Compat 创建完整 Schema；存量库跳过本阶段
+#   1. migration-runner 执行数据迁移（data-migrations/）— 幂等，版本化管理
+#   2. ptah-compat schema apply（desired_schema.sql）— 最终声明式差量收敛
+#
+# 文件职责：
+#   database/desired_schema.sql  → Ptah Compat 管理（扩展/ENUM/表/索引/外键/函数/触发器）
+#   database/data-migrations/    → migration-runner 管理（数据迁移）
+#
+# 本地构建测试：
+#   docker --context remote-dev-container build -f Dockerfile.migrations -t hci-db-migrate:local .
+
+# Stage 1: 获取 Ptah Compat 二进制（固定版本，升级时显式更新并校验 SHA-256）
 FROM alpine:3.23 AS ptah-bin
 ARG PTAH_VERSION=0.11.1
 ARG TARGETARCH
@@ -14,24 +27,41 @@ RUN set -eu; \
     sha256sum -c selected-checksum.txt; \
     tar -xzf "${archive}" ptah-compat LICENSE
 
+# Stage 2: 基础镜像用 postgres:15-alpine（自带 psql）
 FROM postgres:15-alpine AS migration-runtime
+
+# 配置 Alpine 镜像源：本地开发用阿里云镜像，CI 海外用官方源
 ARG MIRROR_MODE=on
 RUN if [ "$MIRROR_MODE" = "on" ]; then \
         sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories; \
     fi
+
+# 吸收 Alpine 安全仓库中已发布的基础包修复。
 RUN apk upgrade --no-cache
+
+# 复制 Ptah Compat 二进制及许可证
 COPY --from=ptah-bin /download/ptah-compat /usr/local/bin/ptah-compat
 COPY --from=ptah-bin /download/LICENSE /usr/share/licenses/ptah/LICENSE
-# Keep pgvector's lists=100 and other authored index storage parameters.
+
+# 保留 pgvector 的 lists=100；允许新库尚不存在被排除的历史工具表。
 ENV PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1 PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1
+
+# 复制 Schema 文件
 COPY database/desired_schema.sql /desired_schema.sql
+
+# 复制数据迁移文件
 COPY database/data-migrations/ /data-migrations/
+
+# 复制入口脚本
 COPY scripts/migration-runner.sh /migration-runner.sh
 COPY scripts/db-migrate.sh /db-migrate.sh
 RUN chmod +x /migration-runner.sh /db-migrate.sh
+
 WORKDIR /
+
 ENTRYPOINT ["/db-migrate.sh"]
 
+# 验证阶段与部署共享迁移镜像，只额外加入测试脚本。
 FROM migration-runtime AS schema-test
 COPY scripts/verify-ptah-schema.sh /verify-ptah-schema.sh
 COPY database/tests/ptah-schema.sql /verify-ptah-schema.sql

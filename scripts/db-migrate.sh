@@ -1,11 +1,23 @@
 #!/bin/sh
-# Bootstrap a fresh database, run versioned data repairs, then reconcile the schema.
-# Existing installations retain the data-before-constraints upgrade order.
+# db-migrate 容器入口脚本
+# 执行顺序（严格串行）：
+#   0. 空库先用 Ptah Compat 创建完整 Schema；存量库跳过，避免约束先于数据清洗
+#   1. migration-runner 执行数据迁移（data-migrations/，幂等，版本化管理）
+#   2. ptah-compat schema apply（扩展/表/索引/函数/触发器，最终声明式差量收敛）
+#
+# 前置条件：
+#   - 数据库用户拥有安装 vector/pgcrypto/uuid-ossp/pg_trgm extensions 的权限
+#   - atlas_dev 数据库已就绪
+#
+# 环境变量（由 Helm Job 注入）：
+#   DATABASE_URL - 目标数据库连接串
+#   DEV_URL      - 独立临时数据库连接串（用于预演变更，不得指向目标库）
+
 set -eu
-: "${DATABASE_URL:?DATABASE_URL is required}"
-: "${DEV_URL:?DEV_URL must name a separate disposable database}"
+: "${DATABASE_URL:?必须配置 DATABASE_URL}"
+: "${DEV_URL:?DEV_URL 必须指向独立临时数据库}"
 export PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1
-# Historical tool tables are absent on fresh installs.
+# 新库可能尚不存在排除列表中的历史工具表。
 export PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1
 
 apply_schema() {
@@ -17,16 +29,36 @@ apply_schema() {
     --auto-approve
 }
 
-echo "HCI database migration with Ptah Compat"
-core_schema_ready=$(psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL" -tAc \
-  "SELECT to_regclass('public.tool_definition') IS NOT NULL;")
-if [ "$core_schema_ready" != "t" ]; then
-  echo "Bootstrapping the complete desired state for a fresh database"
+echo "====== HCI DB 声明式迁移 ======"
+echo "目标数据库: 已配置（连接串已脱敏）"
+
+# ── Step 0: 空库 Schema 引导 ────────────────────────────────────────────────
+# 数据迁移包含对 tool_definition/system_prompt/kbd_entry 等业务表的 DML。
+# 存量库必须先迁数据再收敛新约束；全新空库则必须先创建这些基础表。
+CORE_SCHEMA_READY=$(psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -tAc \
+  "SELECT CASE WHEN to_regclass('public.tool_definition') IS NULL THEN 'false' ELSE 'true' END;")
+
+if [ "$CORE_SCHEMA_READY" != "true" ]; then
+  echo ""
+  echo ">>> Step 0: 检测到全新或未完成初始化的数据库，执行 Ptah Compat Schema 引导"
   apply_schema
+  echo "✅ Step 0 完成（数据迁移依赖表已就绪）"
+else
+  echo ""
+  echo ">>> Step 0: 核心 Schema 已存在，保持存量库先迁数据的升级顺序"
 fi
 
-echo "Applying versioned data migrations"
+# ── Step 1: 执行数据迁移 ────────────────────────────────────────────────────
+echo ""
+echo ">>> Step 1: 执行数据迁移（migration-runner）"
 /migration-runner.sh
-echo "Reconciling extensions, tables, functions, and triggers"
+echo "✅ Step 1 完成"
+
+# ── Step 2: Ptah Compat 声明式 Schema 最终收敛 ───────────────────────────────
+echo ""
+echo ">>> Step 2: ptah-compat schema apply（扩展/表/索引/函数/触发器）"
 apply_schema
-echo "Database migration completed"
+echo "✅ Step 2 完成"
+
+echo ""
+echo "====== 迁移完成 ======"

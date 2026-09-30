@@ -10,11 +10,6 @@ owner: team
 
 # Agent 可靠性改造任务清单
 
-> This fork's schema deployment uses Ptah Compat for the complete desired state.
-> The [verification report](../../solution/database/ptah-compat-validation.md)
-> records the SQL adaptations and upgrade checks. Application reliability tasks
-> below retain their upstream status; these database checks do not close them.
-
 > **关联方案** → [Agent可靠性三方案对比分析](../../solution/agent/02-架构设计/Agent可靠性三方案对比分析.md)
 >
 > **执行策略**："方案 C 为魂，方案 B 为骨，方案 A 为理"融合落地。
@@ -534,6 +529,7 @@ owner: team
 ### T4-3 Fact Store 从 Redis 迁移到 PostgreSQL 【P3】
 
 - **文件**：`backend/shared/models/`、`database/` 迁移脚本
+- **迁移入口**：`db-migrate` 使用 Ptah Compat 0.11.1 管理完整 Schema，迁移顺序与存量数据保留见[验证说明](../../solution/database/ptah-compat-validation.md)。
 - **前提**：阶段二的 Redis Fact Store 已稳定运行 ≥ 2 周
 - **任务**：
   - [x] 新增 `fact` 表（见方案 C §12.1 数据模型）

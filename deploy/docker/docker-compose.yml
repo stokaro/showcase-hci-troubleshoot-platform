@@ -12,14 +12,14 @@ services:
     environment:
       # 迁移工具必须使用 libpq URL，禁止复用后端服务的 postgresql+asyncpg:// DATABASE_URL。
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-postgres://${POSTGRES_USER:-hci_admin}:${POSTGRES_PASSWORD:-dev_password_123}@postgres:5432/${POSTGRES_DB:-hci_troubleshoot}?sslmode=disable}
-      # Ptah Compat rehearses changes in the separate atlas_dev scratch database.
+      # DEV_URL：Ptah Compat 在独立 atlas_dev 临时数据库中预演变更（与 Helm 一致）
       DEV_URL: ${MIGRATION_DEV_URL:-postgres://${POSTGRES_USER:-hci_admin}:${POSTGRES_PASSWORD:-dev_password_123}@postgres:5432/atlas_dev?sslmode=disable}
     # 覆盖 ENTRYPOINT：与 Helm initContainer + PreSync/PostSync 逻辑一致
     entrypoint: ["sh", "-c"]
     command:
       - |
         set -e
-        echo ">>> Initializing the schema scratch database..."
+        echo ">>> 初始化 Schema 临时数据库..."
         # 创建 atlas_dev 数据库（幂等）
         psql "$$DATABASE_URL" -tc \
           "SELECT 1 FROM pg_database WHERE datname='atlas_dev';" \

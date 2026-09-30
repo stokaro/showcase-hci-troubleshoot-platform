@@ -3961,4 +3961,4 @@ CREATE TRIGGER update_sop_document_updated_at
         BEFORE UPDATE ON sop_document
         FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- PostgreSQL index storage parameters are retained with PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1.
+-- PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1 保留 PostgreSQL 索引存储参数。

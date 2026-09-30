@@ -1,40 +1,57 @@
-# One PostgreSQL desired state with Ptah Compat
+# Ptah Compat：统一 PostgreSQL 期望状态与迁移验证
 
-This change replaces the Atlas schema pipeline with the released Ptah Compat
-0.11.1 binary. Extensions, functions, and triggers join tables and indexes in
-`database/desired_schema.sql`. Deployment no longer runs `desired_extras.sql`
-before and after the schema command.
+Ptah Compat **0.11.1** 管理 `database/desired_schema.sql` 中的完整期望状态。
+扩展、函数、触发器与表、索引一起声明式收敛，不再前后两次执行 `desired_extras.sql`。
+基线为上游 [`4ca96cbf`](https://github.com/tomturing/hci-troubleshoot-platform/tree/4ca96cbf27f1d8d24c63429a596849a97ab9011e)；
+[原 Atlas Community 限制记录](../events/2026-04-09-atlas声明式schema真正实现.md)说明了拆分原因。
 
-The source is `tomturing/hci-troubleshoot-platform` at
-[`4ca96cbf27f1d8d24c63429a596849a97ab9011e`](https://github.com/tomturing/hci-troubleshoot-platform/tree/4ca96cbf27f1d8d24c63429a596849a97ab9011e).
-The original [Atlas Community limitation report](../events/2026-04-09-atlas声明式schema真正实现.md)
-explains why these objects were separated.
+## 验证结果
 
-## Measured result
+正式发布的二进制及实际迁移镜像在 PostgreSQL 15.19 / pgvector 0.8.6 上通过新建、重复、
+漂移修复和原始 Schema 升级验证。进程 UID 为 65534，与 Helm Job 一致。
 
-The migration image passed fresh-install, repeat, drift-repair, and upstream-upgrade
-checks on PostgreSQL 15.19 with pgvector 0.8.6. It ran as UID 65534. Both fresh and
-upgraded databases contain 76 tables, four application functions, 24 enabled
-application triggers, and all four declared extensions. Repeated deployments
-produce zero schema diff and preserve function, trigger, and vector-index identities.
+- 新建和升级后均有 76 张表、4 个声明扩展、4 个应用函数及 24 个启用的应用触发器。
+- 对照独立执行原始 SQL 得到的 catalog，全部 1,225 个列的类型、默认值、可空性零差异。
+- 重复部署后零 Schema diff，函数、触发器、向量索引共 30 个对象的 OID 保持不变。
+- 两个 IVFFlat 索引保留 `vector_cosine_ops`、`lists=100` 及知识条目索引的 `published` 过滤条件。
+- 行为验证覆盖 `updated_at`、工单编号、消息 INSERT/DELETE 只计数一次、SQL NULL 默认值、
+  代表性存量数据保留、中断任务修复及原迁移 `035` 的历史 checksum 保留。
 
-An independent catalog comparison covered all 1,225 upstream columns. The
-fresh and upgraded catalogs have zero differences in types, defaults, or
-nullability. The complete original schema is retained byte for byte in the
-combined desired state. Both IVFFlat index
-definitions match the upstream PostgreSQL catalog, including `vector_cosine_ops`,
-`lists=100`, and the `published` filter on the knowledge-entry index.
+Atlas Community 1.3.1 对照实验使用相同的合并 SQL，并在目标库和临时库预装必要扩展。
+命令成功结束，创建了 76 张表，但没有创建应用函数或触发器，与原拆分方案的原因一致。
 
-A control using Atlas Community 1.3.1, the version in the upstream deployment
-image, received the same combined object declarations. With the required
-extensions preinstalled in its target database, it created 76 tables but no
-application functions or triggers. This was a successful command that omitted
-those objects. The control establishes the need for the existing workaround.
+## 保留原始 SQL
 
-## Deployment behavior
+初次用 0.11.0 验证时需要绕过 Ptah 自身缺陷。0.11.1 已在共享 SQL 读取和比较代码中修复，
+因此保留原始表和索引 SQL 的全部字节，不要求应用改写合法声明。
 
-`Dockerfile.migrations` downloads the release archive and verifies its SHA-256
-against the release checksums. The migration entrypoint calls:
+| 保留的声明 | Ptah 0.11.1 修复 |
+| --- | --- |
+| `bundle_metadata.kbd_id INTEGER` 引用 `BIGINT` | 接受 PostgreSQL 支持的不同整数宽度外键。 |
+| 两处 `category_id varchar(32)` 引用 `varchar(64)` | 不再要求外键两侧 varchar 长度相同。 |
+| 全部 73 个 `CURRENT_TIMESTAMP` 默认值 | 保留关键字，不再生成无效的空括号调用。 |
+| `pending_variable_name DEFAULT NULL` | 区分 SQL NULL 与字符串 `'NULL'`。 |
+| `generate_case_id() RETURNS varchar(20)` | 比较函数时考虑 PostgreSQL 丢弃的类型修饰符，不改写声明。 |
+
+扩展声明加在原文件前，应用函数和触发器声明加在原文件后。迁移 `040` 不含列宽调整。
+SQL NULL 验证允许 PostgreSQL 将显式默认值存为 `NULL::character varying`，但拒绝字符串 `'NULL'`。
+
+## 集成改动及原因
+
+| 改动 | 原因 |
+| --- | --- |
+| 合并 Schema 与 extras 中的对象声明 | 声明式管理必须包含全部归其管理的对象。 |
+| 迁移镜像使用正式 0.11.1 发布包并校验 SHA-256 | 部署与验证使用包含上述修复的相同版本。 |
+| Compose、Helm、Make 统一迁移入口 | 各入口使用同一期望状态及数据修复顺序。 |
+| 删除 PostgreSQL init ConfigMap 中重复的应用 DDL | 对象由迁移 Job 管理，避免维护另一份定义。 |
+| 原 extras 数据修复移入迁移 `040` | 保留中断任务转换和废弃 Alembic 触发器清理，避免消息双倍计数。 |
+| 迁移 `035` 使用 `CREATE OR REPLACE TRIGGER` | 新库完整 Schema 已有该触发器，原 CREATE 会发生同名冲突。 |
+| 保留独立临时库及索引/排除选项 | 预演计划，保留 `lists=100`，允许新库不存在历史工具表。 |
+| 增加镜像验证及更新相关文档 | 覆盖新建、重复、漂移修复和原始 Schema 升级。 |
+
+## 部署和存量迁移
+
+`Dockerfile.migrations` 下载正式发布包并按发布 checksums 校验 SHA-256。入口调用：
 
 ```sh
 ptah-compat schema apply \
@@ -45,79 +62,24 @@ ptah-compat schema apply \
   --auto-approve
 ```
 
-The image and entrypoint set these documented options:
+- `PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1` 保留 `lists=100` 等索引存储参数，避免重复重建。
+- `PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1` 允许新库尚不存在历史工具表时继续使用原排除列表。
 
-- `PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1` retains pgvector's `lists=100`.
-  It prevents repeated rebuilds caused by omitted storage parameters.
-- `PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1` allows the historical tool-table
-  exclusions when those tables do not exist, including on a fresh installation.
+`DEV_URL` 仍指向独立的 `atlas_dev` 临时数据库。Ptah 在其中预演完整计划并管理扩展和清理。
+服务器仍需安装 pgvector 等扩展二进制，迁移用户仍需相应权限；不能把临时库 URL 指向目标库。
 
-The separate scratch database is still named `atlas_dev` in existing Compose
-and Helm configuration. Ptah rehearses the complete plan there before changing
-the target. It installs the declared extensions itself and cleans the scratch
-state. The explicit extension bootstrap and reset loops have been removed.
+新库先创建完整 Schema，再执行数据迁移、最终收敛；存量库先执行数据迁移，再收敛约束。
+原 extras 数据修复移至 `040_preserve_legacy_extras_repairs.sql`，继续由原 migration-history 机制管理。
+迁移 `035` 仅将触发器创建改为 `CREATE OR REPLACE TRIGGER`（PostgreSQL 15 支持）：已执行版本仍被
+runner 跳过，历史 checksum 保留；新安装记录更新后的 checksum。其他旧数据迁移和历史
+`atlas-migrations/`、`atlas.sum` 均未修改。
 
-The PostgreSQL init ConfigMaps no longer contain copies of application schema
-objects. The migration Job owns them. The same pgvector-enabled server image
-and database permissions remain necessary.
+## 复现验证
 
-## Original SQL retained in Ptah 0.11.1
+`DB Schema 声明式验证` workflow 构建同一 Dockerfile 的 `schema-test` 阶段，以 UID 65534 运行。
+验证要求目标库和临时库为空，且 PostgreSQL 15 服务器已安装 pgvector 二进制。
 
-The initial 0.11.0 rehearsal required changes for Ptah defects. Version 0.11.1
-fixes those defects in the shared SQL and comparison code. This change removes
-the workarounds rather than asking the application to change valid SQL.
-
-| Declaration retained | Fix in Ptah 0.11.1 |
-| --- | --- |
-| `bundle_metadata.kbd_id INTEGER` referencing `BIGINT` | PostgreSQL foreign-key validation accepts different compatible integer widths. |
-| Both `category_id varchar(32)` references to `varchar(64)` | Foreign-key validation no longer requires the same declared varchar length. |
-| All 73 `CURRENT_TIMESTAMP` defaults | The reader retains the keyword instead of rendering invalid empty parentheses. |
-| `pending_variable_name DEFAULT NULL` | The reader distinguishes SQL NULL from the string `'NULL'`. |
-| `generate_case_id() RETURNS varchar(20)` | Routine comparison accounts for PostgreSQL's discarded modifiers without rewriting the declaration. |
-
-The original table and index SQL is embedded unchanged. Extension declarations
-are prepended, and application function and trigger declarations are appended.
-Migration `040` has no column-widening statements. The live catalogs are compared
-with the original SQL executed independently through psql.
-
-## Reasons for the integration changes
-
-| Change | Reason |
-| --- | --- |
-| Combine the schema and the object declarations from extras | The desired state must include every object that schema reconciliation owns. |
-| Use the released binary in the migration image | The deployment must run the fixes verified here; its archive checksum is checked during the image build. |
-| Replace Atlas/extras calls in Compose, Helm, and Make targets | Every deployment path uses the same complete desired state and data-repair order. |
-| Remove application DDL from PostgreSQL init ConfigMaps | Initialization must not retain a second copy of definitions now owned by the desired schema. |
-| Move existing extras repairs to migration `040` | Retain interrupted-job conversion and obsolete-trigger cleanup after removing the extras file. |
-| Make migration `035` use `CREATE OR REPLACE TRIGGER` | A fresh complete schema already contains that trigger; the historical migration must not fail on its second creation. |
-| Retain a separate scratch database and set index/exclusion options | Rehearse the plan, preserve `lists=100`, and allow absent historical tool tables on fresh installs. |
-| Update verification and migration documentation | Check fresh, repeat, repair, and original-schema upgrade through the actual deployment image. |
-
-## Existing installations and data migrations
-
-A fresh database receives the complete schema before running data migrations.
-An existing database runs its data migrations before final schema reconciliation,
-so existing rows are repaired before new constraints are applied.
-
-`desired_extras.sql` contained data repairs as well as schema objects. The
-repairs move to `data-migrations/040_preserve_legacy_extras_repairs.sql` and run
-through the existing migration-history mechanism. This preserves interrupted
-batch-job conversion and removes obsolete Alembic triggers that could double
-message counts. The schema DDL in data migration `035` now uses `CREATE OR REPLACE TRIGGER`,
-which PostgreSQL 15 supports. Its old unconditional CREATE collided with a
-trigger already installed by the complete desired state. Previously recorded
-migration-history rows are retained and remain skipped by version. Fresh
-installations record the updated file checksum. The other earlier data migration
-files and all historical `atlas-migrations/` files and `atlas.sum` are unchanged.
-
-## Reproduce the verification
-
-The `DB Schema verification` workflow builds the `schema-test` target of the
-same Dockerfile as deployment. It runs as UID 65534, matching the Helm Job.
-The test uses separate empty target and scratch databases on PostgreSQL 15 with
-pgvector. No external embedding provider or application deployment is needed.
-
-For a manual run, build the target on your selected Docker context:
+手动运行时请选择自己的 Docker context；以下示例使用 `remote-dev-container`：
 
 ```sh
 docker --context remote-dev-container build \
@@ -125,10 +87,9 @@ docker --context remote-dev-container build \
   -f Dockerfile.migrations -t hci-db-migrate-verify .
 ```
 
-Create separate disposable databases and pass their URLs as `DATABASE_URL`,
-`DEV_URL`, `UPGRADE_DATABASE_URL`, and `UPGRADE_DEV_URL`. Provide these unchanged
-upstream files inside the verification container as `/legacy_schema.sql`,
-`/legacy_extras.sql`, and `/legacy_migration_035.sql`:
+创建独立的临时数据库，传入 `DATABASE_URL`、`DEV_URL`、`UPGRADE_DATABASE_URL`、`UPGRADE_DEV_URL`。
+将以下未修改的原始上游文件放入验证容器的 `/legacy_schema.sql`、`/legacy_extras.sql`、
+`/legacy_migration_035.sql`：
 
 ```sh
 git show 4ca96cbf27f1d8d24c63429a596849a97ab9011e:database/desired_schema.sql > /tmp/legacy_schema.sql
@@ -136,29 +97,10 @@ git show 4ca96cbf27f1d8d24c63429a596849a97ab9011e:database/desired_extras.sql > 
 git show 4ca96cbf27f1d8d24c63429a596849a97ab9011e:database/data-migrations/035_bundle_factory_version_metadata.sql > /tmp/legacy_migration_035.sql
 ```
 
-Use `docker cp` for remote Docker hosts; a bind mount uses the daemon's
-filesystem. Run `/verify-ptah-schema.sh` as the container entrypoint. It refuses
-nonempty databases before starting. See the workflow for the complete runner
-configuration.
+远程 Docker daemon 使用 `docker cp` 传文件，bind mount 的路径属于 daemon 主机。
+运行 `/verify-ptah-schema.sh` 作为入口；脚本拒绝非空数据库。完整 runner 配置见 workflow。
 
-The verification covers:
-
-- Creating the full schema, including application functions, enabled triggers,
-  extensions, and both IVFFlat indexes with their storage parameters.
-- Exercising `updated_at`, case-ID generation, and message INSERT/DELETE counting.
-- Evaluating the SQL NULL default. PostgreSQL stores the original explicit
-  declaration as `NULL::character varying`; an absent catalog expression is
-  not required. A text value `'NULL'` fails the check.
-- Repeating deployment with zero schema diff and unchanged function/trigger/index OIDs.
-- Repairing a removed extension, replaced function, removed trigger, and removed
-  vector index through the same declarative entrypoint.
-- Loading the unchanged upstream schema and extras, adding representative existing
-  rows and obsolete Alembic triggers, then upgrading without losing those rows.
-- Retaining the checksum of an actually executed original migration `035`.
-- Preserving the legacy interrupted-job repair and repeating the upgraded deployment
-  with zero diff and stable object identities.
-
-The local measurements and exact inputs are recorded in
-[the verification results](ptah-compat-results.json). These checks establish
-schema management for this repository. They do not measure application load,
-embedding-provider behavior, or production deployment.
+原始测量输入、SHA-256、catalog 对照和原始输出固定保存在
+[验证结果快照（2dbc048e）](https://github.com/stokaro/showcase-hci-troubleshoot-platform/blob/2dbc048e70eae5782dc600800bbfa6dbeeadaa38/docs/solution/database/ptah-compat-results.json)，
+不在应用仓库重复存放测量 JSON。后续中文注释和日志调整不改写该快照。
+这些检查验证数据库 Schema 和迁移行为，未覆盖应用负载、外部 embedding provider、Kubernetes 或生产部署。

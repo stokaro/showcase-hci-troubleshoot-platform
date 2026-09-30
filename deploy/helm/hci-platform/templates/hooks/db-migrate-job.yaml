@@ -1,7 +1,16 @@
 {{- if .Values.dbMigrate.enabled }}
-# The PreSync Job reconciles the complete desired state with Ptah Compat.
-# Existing databases run versioned data repairs before schema constraints change.
-# Fresh databases bootstrap from desired_schema.sql before those repairs.
+# DB Schema 同步 Job — ArgoCD PreSync Hook
+# 每次 ArgoCD Sync 前执行；入口脚本在空库先引导 Schema，再完成数据迁移和最终声明式收敛
+#
+# 工作模式：Ptah Compat 管理完整期望状态，migration-runner 管理版本化数据修复
+#   1. 空库先由 desired_schema.sql 创建完整 Schema；存量库跳过此步骤
+#   2. migration-runner 执行数据迁移，先修复存量数据再收敛约束
+#   3. ptah-compat schema apply → desired_schema.sql（扩展/表/索引/函数/触发器）
+#
+# 开发者工作流：
+#   修改 Schema 对象 → 编辑 database/desired_schema.sql
+#   修改数据 → 新增 database/data-migrations/ 文件
+#   提交 PR → CI 验证 → 合并 → 自动构建镜像 → ArgoCD sync → 本 Job 执行
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -35,8 +44,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 65534   # nobody（postgres:15-alpine 默认用户）
         fsGroup: 65534
-      # Create the separate atlas_dev scratch database for Ptah Compat.
-      # Ptah rehearses the plan here before applying it to the target
+      # initContainer：为 Ptah Compat dev-url 建立独立 atlas_dev 临时数据库（幂等）
+      # Ptah Compat 在同版本的临时 PostgreSQL 库中预演变更，再应用到目标库
       initContainers:
         - name: init-schema-dev
           image: postgres:15-alpine
@@ -45,12 +54,12 @@ spec:
           args:
             - |
               set -e
-              # The scratch database uses the target server and extension binaries.
+              # 临时数据库与目标库使用相同的服务器和扩展二进制。
               psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -tc \
                 "SELECT 1 FROM pg_database WHERE datname='atlas_dev';" \
                 | grep -q 1 || \
                 psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -c "CREATE DATABASE atlas_dev;"
-              echo "Schema scratch database is ready"
+              echo "Schema 临时数据库已就绪"
           env:
             - name: DATABASE_URL
               value: {{ printf "postgres://%s:%s@%s:5432/%s?sslmode=disable" .Values.config.postgresUser (.Values.secrets.postgresPassword | urlquery) .Values.config.postgresHost .Values.config.postgresDb | quote }}
