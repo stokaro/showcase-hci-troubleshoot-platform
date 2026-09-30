@@ -54,7 +54,7 @@ help:
 	@echo "  数据库迁移命令（Ptah Compat）:"
 	@echo "  ptah-compat schema diff --env local     - 查看 Schema 差异"
 	@echo "  ptah-compat schema apply --env local    - 应用期望 Schema"
-	@echo "  make db-sync                            - 执行 Schema 和数据迁移"
+	@echo "  make db-sync                            - 手动执行数据库 Schema 迁移（修改 desired_schema.sql 后使用）"
 	@echo ""
 	@echo "  信号数据模型契约（RFC §6.1）:"
 	@echo "  make gen-schemas    - 从 ACQUIRER_ARGS_SCHEMA 导出 v2 JSON Schema 契约文件"
