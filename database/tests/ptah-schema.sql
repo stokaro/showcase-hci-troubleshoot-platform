@@ -1,4 +1,4 @@
--- 验证完整的上游对象清单及业务行为。
+-- 验证扩展、应用函数、向量索引及关键业务行为；完整期望状态由 schema diff 验证。
 BEGIN;
 DO $$
 DECLARE
@@ -8,19 +8,16 @@ DECLARE
   case_number varchar;
   next_case_number varchar;
   actual integer;
+  missing_objects text;
   default_sql text;
   default_is_null boolean;
 BEGIN
-  SELECT count(*) INTO actual FROM pg_tables WHERE schemaname='public';
-  IF actual <> 76 THEN RAISE EXCEPTION '期望 76 张表，实际 %', actual; END IF;
-  SELECT count(*) INTO actual FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-    WHERE n.nspname='public' AND NOT EXISTS
-      (SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e');
-  IF actual <> 4 THEN RAISE EXCEPTION '期望 4 个应用函数，实际 %', actual; END IF;
-  SELECT count(*) INTO actual FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
-    JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE n.nspname='public' AND NOT t.tgisinternal AND t.tgenabled='O';
-  IF actual <> 24 THEN RAISE EXCEPTION '期望 24 个启用的触发器，实际 %', actual; END IF;
+  -- 只验证所需对象，不限制后续 PR 新增表、函数或触发器；完整期望状态另由 schema diff 验证。
+  SELECT string_agg(name, ', ') INTO missing_objects FROM unnest(ARRAY[
+    'public.update_updated_at_column()', 'public.fn_update_conversation_message_count()',
+    'public.generate_case_id()', 'public.update_bundle_metadata_updated_at()'
+  ]) AS expected(name) WHERE to_regprocedure(name) IS NULL;
+  IF missing_objects IS NOT NULL THEN RAISE EXCEPTION '缺少应用函数: %', missing_objects; END IF;
   SELECT count(*) INTO actual FROM pg_extension
     WHERE extname IN ('vector','pgcrypto','uuid-ossp','pg_trgm');
   IF actual <> 4 THEN RAISE EXCEPTION '缺少声明的扩展'; END IF;

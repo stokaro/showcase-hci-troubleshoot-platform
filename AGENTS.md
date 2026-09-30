@@ -260,7 +260,7 @@
     - DB Schema：`message_role` ENUM 增加 `tool_call` 和 `tool_result` 两个角色；`message` 表增加 `tool_call_id` 字段关联 tool result 到对应 tool call。
     - agent-service：`react_engine.py` 新增 `_persist_tool_turn()` 方法，每次工具执行完毕后 fire-and-forget 调用 `conversation-service` 的 `/tool-turn` 接口写入记录。
     - conversation-service：新增 `POST /api/conversations/{id}/tool-turn` 接口；修改 `history_messages` 构建逻辑，加载时包含 `tool_call/tool_result` 角色消息并正确还原为 OpenAI messages 格式；实现**滑动窗口压缩**策略（最近 10 步完整保留，更早的工具输出截断为 200 字符摘要，防止 token 爆炸）。
-    - 存量环境：`desired_extras.sql` 幂等 `ALTER TYPE` 和 `ALTER TABLE` 自动补齐旧部署。
+    - 存量环境：`data-migrations/040_preserve_legacy_extras_repairs.sql` 幂等补齐工具调用角色和字段，再由 Ptah Compat 收敛期望状态。
 
 - 前端工具栏优化：工单信息 Popover（含 ID/工单号）→ 关闭工单 → SSH终端（Monitor 图标），终端历史按钮移入 TerminalPanel header-actions
 - 环境采集命令更新：`task get -s failed -l 10`（仅失败任务）；后端字段映射已支持整数 status/urgent_type 与 Unix 时间戳（PR #285）
@@ -366,7 +366,7 @@
   - `resolve_image_build_plan.py` 将 `deploy/docker/base/` 变更视为与 `backend/shared/` 同级的全后端扩散输入。
 - **db-seed PostSync Hook UNIQUE 约束修复**（hotfix/db-seed-system-prompt-unique-constraint）：
   - `desired_schema.sql` 补齐 `system_prompt.name` 字段的 `CONSTRAINT system_prompt_name_key UNIQUE (name)` 声明，使 `ON CONFLICT (name)` 种子 SQL 可正常执行。
-  - `desired_extras.sql` 新增幂等 `DO $$` 块，存量环境（未包含该约束的旧部署）在下次 ArgoCD deploy 时自动补齐约束，无需人工干预。
+  - `desired_schema.sql` 声明该约束；存量环境由数据迁移 `040` 在 Schema 收敛前补齐，下次 ArgoCD deploy 自动执行，无需人工干预。
   - staging 环境已直接热修复数据库约束并重命名为 `system_prompt_name_key`，db-seed Job 下次重建后可正常完成。
 - **API 网关命令反馈 `exec-result` 路由与鉴权修复**：
   - 修复 API 网关 (`api-gateway`) 缺少 `/api/conversations/{conversation_id}/exec-result` 代理路由，导致前端命令执行结果无法回传的问题。

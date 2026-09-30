@@ -1,5 +1,6 @@
 -- 将原 desired_extras.sql 中的遗留修复移入版本化数据迁移。
--- 新库已在 desired_schema.sql 中声明相关对象。
+-- 新库已在 desired_schema.sql 中声明相关对象；只扩展尚缺旧版本标记的 CHECK，
+-- 不覆盖完整或后续扩展的约束，避免 041+ 数据迁移使用新值时被旧列表阻断。
 -- 存量库仍需在 Schema 收敛前完成中断任务的数据转换。
 
 DO $$ BEGIN
@@ -26,45 +27,61 @@ DO $$ BEGIN
       ADD COLUMN IF NOT EXISTS interrupted_count integer NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS retry_of_batch_id uuid,
       ADD COLUMN IF NOT EXISTS request_json jsonb NOT NULL DEFAULT '{}'::jsonb;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_kbd_batch_job_retry_of') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_kbd_batch_job_retry_of'
+      AND conrelid = 'public.kbd_batch_job'::regclass) THEN
       ALTER TABLE kbd_batch_job ADD CONSTRAINT fk_kbd_batch_job_retry_of
         FOREIGN KEY (retry_of_batch_id) REFERENCES kbd_batch_job (batch_id) ON DELETE RESTRICT;
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_kbd_batch_job_retry_of') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_kbd_batch_job_retry_of'
+      AND conrelid = 'public.kbd_batch_job'::regclass) THEN
       ALTER TABLE kbd_batch_job ADD CONSTRAINT uq_kbd_batch_job_retry_of UNIQUE (retry_of_batch_id);
     END IF;
     CREATE INDEX IF NOT EXISTS idx_kbd_batch_job_retry_of
       ON kbd_batch_job (retry_of_batch_id) WHERE retry_of_batch_id IS NOT NULL;
-    ALTER TABLE kbd_batch_job DROP CONSTRAINT IF EXISTS ck_kbd_batch_job_status;
-    ALTER TABLE kbd_batch_job ADD CONSTRAINT ck_kbd_batch_job_status CHECK (
-      (status)::text = ANY (
-        (ARRAY[
-          'pending'::varchar, 'running'::varchar, 'completed'::varchar,
-          'partial_failed'::varchar, 'failed'::varchar, 'interrupted'::varchar
-        ])::text[]
-      )
-    );
-    ALTER TABLE kbd_batch_job DROP CONSTRAINT IF EXISTS ck_kbd_batch_job_type;
-    ALTER TABLE kbd_batch_job ADD CONSTRAINT ck_kbd_batch_job_type CHECK (
-      (job_type)::text = ANY (
-        (ARRAY[
-          'reanalyze_images'::varchar, 'reclassify'::varchar, 'extract_signals'::varchar,
-          'approve'::varchar, 'reject'::varchar
-        ])::text[]
-      )
-    );
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_kbd_batch_job_request_json') THEN
+    IF EXISTS (SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'public.kbd_batch_job'::regclass AND conname = 'ck_kbd_batch_job_status'
+        AND position('''interrupted''' IN pg_get_constraintdef(oid)) = 0) THEN
+      ALTER TABLE kbd_batch_job DROP CONSTRAINT IF EXISTS ck_kbd_batch_job_status;
+      ALTER TABLE kbd_batch_job ADD CONSTRAINT ck_kbd_batch_job_status CHECK (
+        (status)::text = ANY (
+          (ARRAY[
+            'pending'::varchar, 'running'::varchar, 'completed'::varchar,
+            'partial_failed'::varchar, 'failed'::varchar, 'interrupted'::varchar
+          ])::text[]
+        )
+      );
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'public.kbd_batch_job'::regclass AND conname = 'ck_kbd_batch_job_type'
+        AND position('''extract_signals''' IN pg_get_constraintdef(oid)) = 0) THEN
+      ALTER TABLE kbd_batch_job DROP CONSTRAINT IF EXISTS ck_kbd_batch_job_type;
+      ALTER TABLE kbd_batch_job ADD CONSTRAINT ck_kbd_batch_job_type CHECK (
+        (job_type)::text = ANY (
+          (ARRAY[
+            'reanalyze_images'::varchar, 'reclassify'::varchar, 'extract_signals'::varchar,
+            'approve'::varchar, 'reject'::varchar
+          ])::text[]
+        )
+      );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_kbd_batch_job_request_json'
+      AND conrelid = 'public.kbd_batch_job'::regclass) THEN
       ALTER TABLE kbd_batch_job ADD CONSTRAINT ck_kbd_batch_job_request_json
         CHECK (jsonb_typeof(request_json) = 'object');
     END IF;
-    ALTER TABLE kbd_batch_job DROP CONSTRAINT IF EXISTS ck_kbd_batch_job_counts;
-    ALTER TABLE kbd_batch_job ADD CONSTRAINT ck_kbd_batch_job_counts CHECK (
-      total_count > 0 AND completed_count >= 0 AND succeeded_count >= 0
-      AND failed_count >= 0 AND interrupted_count >= 0
-      AND completed_count = succeeded_count + failed_count + interrupted_count
-      AND completed_count <= total_count
-    );
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_kbd_batch_job_work_counts') THEN
+    IF EXISTS (SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'public.kbd_batch_job'::regclass AND conname = 'ck_kbd_batch_job_counts'
+        AND position('interrupted_count' IN pg_get_constraintdef(oid)) = 0) THEN
+      ALTER TABLE kbd_batch_job DROP CONSTRAINT IF EXISTS ck_kbd_batch_job_counts;
+      ALTER TABLE kbd_batch_job ADD CONSTRAINT ck_kbd_batch_job_counts CHECK (
+        total_count > 0 AND completed_count >= 0 AND succeeded_count >= 0
+        AND failed_count >= 0 AND interrupted_count >= 0
+        AND completed_count = succeeded_count + failed_count + interrupted_count
+        AND completed_count <= total_count
+      );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_kbd_batch_job_work_counts'
+      AND conrelid = 'public.kbd_batch_job'::regclass) THEN
       ALTER TABLE kbd_batch_job ADD CONSTRAINT ck_kbd_batch_job_work_counts CHECK (
         work_total_count >= 0 AND work_completed_count >= 0 AND work_failed_count >= 0
         AND work_completed_count <= work_total_count AND work_failed_count <= work_completed_count
@@ -77,16 +94,21 @@ DO $$ BEGIN
       ADD COLUMN IF NOT EXISTS work_total_count integer NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS work_completed_count integer NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS work_failed_count integer NOT NULL DEFAULT 0;
-    ALTER TABLE kbd_batch_job_item DROP CONSTRAINT IF EXISTS ck_kbd_batch_job_item_status;
-    ALTER TABLE kbd_batch_job_item ADD CONSTRAINT ck_kbd_batch_job_item_status CHECK (
-      (status)::text = ANY (
-        (ARRAY[
-          'pending'::varchar, 'running'::varchar, 'succeeded'::varchar,
-          'failed'::varchar, 'interrupted'::varchar
-        ])::text[]
-      )
-    );
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_kbd_batch_job_item_work_counts') THEN
+    IF EXISTS (SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'public.kbd_batch_job_item'::regclass AND conname = 'ck_kbd_batch_job_item_status'
+        AND position('''interrupted''' IN pg_get_constraintdef(oid)) = 0) THEN
+      ALTER TABLE kbd_batch_job_item DROP CONSTRAINT IF EXISTS ck_kbd_batch_job_item_status;
+      ALTER TABLE kbd_batch_job_item ADD CONSTRAINT ck_kbd_batch_job_item_status CHECK (
+        (status)::text = ANY (
+          (ARRAY[
+            'pending'::varchar, 'running'::varchar, 'succeeded'::varchar,
+            'failed'::varchar, 'interrupted'::varchar
+          ])::text[]
+        )
+      );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_kbd_batch_job_item_work_counts'
+      AND conrelid = 'public.kbd_batch_job_item'::regclass) THEN
       ALTER TABLE kbd_batch_job_item ADD CONSTRAINT ck_kbd_batch_job_item_work_counts CHECK (
         work_total_count >= 0 AND work_completed_count >= 0 AND work_failed_count >= 0
         AND work_completed_count <= work_total_count AND work_failed_count <= work_completed_count
@@ -173,7 +195,7 @@ DO $$ BEGIN
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname='public' AND tablename='message') THEN
     IF NOT EXISTS (
       SELECT 1 FROM information_schema.columns
-      WHERE table_name = 'message' AND column_name = 'tool_call_id'
+      WHERE table_schema = 'public' AND table_name = 'message' AND column_name = 'tool_call_id'
     ) THEN
       ALTER TABLE message ADD COLUMN tool_call_id text;
       COMMENT ON COLUMN message.tool_call_id IS

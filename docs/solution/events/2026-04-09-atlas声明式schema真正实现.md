@@ -6,8 +6,6 @@ last_updated: 2026-04-09
 owner: team
 ---
 
-> 当前 Schema 管理由 Ptah Compat 0.11.1 接管，详见[验证说明](../database/ptah-compat-validation.md)。下文保留原 Atlas 实现的历史记录。
-
 # Atlas 声明式 Schema 管理——真正实现
 
 ## 背景与问题

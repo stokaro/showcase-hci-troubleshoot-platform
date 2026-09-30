@@ -16,9 +16,6 @@
 set -eu
 : "${DATABASE_URL:?必须配置 DATABASE_URL}"
 : "${DEV_URL:?DEV_URL 必须指向独立临时数据库}"
-export PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1
-# 新库可能尚不存在排除列表中的历史工具表。
-export PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1
 
 apply_schema() {
   ptah-compat schema apply \

@@ -1,12 +1,6 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
-
 -- ============================================================
 -- 说明：本文件是 HCI 数据库的声明式期望状态（Desired Schema）
--- 由 Atlas 工具管理，开发者修改此文件后运行 atlas migrate diff 生成迁移
+-- 由 Ptah Compat 0.11.1 管理，开发者修改此文件后运行 ptah-compat schema diff 审查差异
 -- 注意：不包含 schema_migrations 表（dbmate 工具表，已废弃）
 --       也不包含 atlas_schema_revisions 表（Atlas 自动管理）
 -- ============================================================
@@ -29,11 +23,13 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 --   vector_search: 通过 pgvector 扩展支持 1536 维向量，用于知识库语义检索和意图识别
 
 -- ============================================================
--- 扩展（由 postgres init SQL 管理，不在此处声明）
--- 依赖：uuid-ossp, pgcrypto, pg_trgm, vector
--- 见 deploy/helm/hci-platform/templates/postgres/init-configmap.yaml
--- 注意：Atlas Community 不支持在 schema 文件中声明 extensions（需要 atlas login）
+-- 扩展（与表、函数、触发器一起由期望状态管理）
+-- PostgreSQL 服务器须安装扩展二进制；安装权限见 database/README.md
 -- ============================================================
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ============================================================
 -- 自定义 ENUM 类型
@@ -2353,6 +2349,7 @@ CREATE INDEX IF NOT EXISTS idx_kb_category_level ON kb_category (level);
 -- ⚠️  注意：IVFFlat 索引需在数据量 > 1000 行且执行 ANALYZE 后才能正常发挥效果。
 --    全新部署建库后如数据量不足，查询会自动退化为顺序扫描（不影响正确性，仅影响性能）。
 --    建议在批量导入知识库数据后执行：ANALYZE kb_category;
+-- 迁移镜像的 PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1 保留 IVFFlat lists=100。
 CREATE INDEX IF NOT EXISTS idx_kb_category_embedding ON kb_category
     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
@@ -2516,6 +2513,7 @@ CREATE INDEX IF NOT EXISTS idx_kbd_entry_agent_usable ON kbd_entry (category_id,
 -- D-002: 向量相似度检索索引（知识库语义检索，仅已发布条目）
 -- 部分索引：只对 status='published' 的条目建索引，减少写入/存储开销，与业务查询路径吻合。
 -- ⚠️  同 kb_category：数据量不足 1000 时效果有限，建议批量导入后执行：ANALYZE kbd_entry;
+-- 迁移镜像的 PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1 保留 IVFFlat lists=100。
 CREATE INDEX IF NOT EXISTS idx_kbd_entry_embedding ON kbd_entry
     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)
     WHERE status = 'published';
@@ -3960,5 +3958,3 @@ CREATE TRIGGER update_kbd_batch_job_item_updated_at
 CREATE TRIGGER update_sop_document_updated_at
         BEFORE UPDATE ON sop_document
         FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1 保留 PostgreSQL 索引存储参数。

@@ -4,7 +4,7 @@
 
 本项目使用 [Ptah Compat](https://github.com/stokaro/ptah/releases/tag/v0.11.1) 声明式管理数据库 Schema。
 扩展、函数、触发器与表、索引统一声明在 `desired_schema.sql`，不再前后两次执行 `desired_extras.sql`。
-集成改动的原因和升级结果见[验证说明](../docs/solution/database/ptah-compat-validation.md)。
+接管验证与对照实验见[Ptah 团队的文章](https://blog.ptah.run/posts/hci-postgresql-desired-state/)。
 
 > ⚠️ **dbmate 迁移链已于 2026-04-08 彻底废弃。**
 > `database/migrations/` 下的文件仅作历史档案，不再被任何 K8s Job 执行。
@@ -65,15 +65,22 @@ ptah-compat schema diff --env local
 ```
 
 `DEV_URL` 必须指向与目标库同版本的独立临时数据库，不得指向目标库。
-PostgreSQL 服务器需安装 pgvector 等扩展的二进制，迁移用户需有安装扩展的权限。
-Ptah Compat 从期望状态创建扩展，无需额外初始化扩展或手动重置临时库。
+项目部署和 CI 使用 PostgreSQL 15；迁移 `035` 的 `CREATE OR REPLACE TRIGGER` 至少需要 PostgreSQL 14。
+服务器须安装 pgvector 等扩展二进制。`vector` 不是 trusted 扩展，目标库和临时库的迁移用户均须有安装权限；
+内置 Chart 的 `config.postgresUser` 同时作为 `POSTGRES_USER` 初始化超级用户。外部/托管数据库须由管理员授权或预装扩展。
+Ptah Compat 从期望状态管理扩展，无需手动重置临时库。现有 PostgreSQL init ConfigMap 保留原样；后续变更由完整期望状态收敛。
+
+镜像统一设置 `PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1`（保留 `lists=100`）和
+`PTAH_ATLAS_ALLOW_UNMATCHED_EXCLUDE=1`（新库可能尚无历史工具表）；直接运行本地 CLI 时按上例设置。
+`MIRROR_MODE=on` 对所有 Alpine 阶段生效。GitHub 访问受限时可用构建参数 `PTAH_RELEASE_BASE_URL`
+指定发布镜像的基路径（其下仍为 `v0.11.1/ptah_0.11.1_linux_<arch>.tar.gz`）；下载按 Dockerfile 内固定 SHA-256 校验。
 
 ### CI 自动验证
 
 CI 流程自动执行：
-1. 构建与部署相同的迁移镜像，以 UID 65534 验证新建库和业务触发器行为
-2. 重复部署，验证零 Schema diff 和函数/触发器/向量索引 OID 不变
-3. 删除或修改对象后验证漂移修复；从原始上游 Schema 升级，验证存量数据和迁移历史保留
+1. 构建与部署相同的迁移镜像，以 UID 65534 完成新建库及版本化数据迁移
+2. 保留核心表/废弃表检查，验证函数、触发器及 pgvector 行为
+3. 重复部署，读取 `schema diff --format '{{ len .Changes }}'`，要求待变更数量为零
 
 ## 幂等性规范（强制）
 
@@ -99,7 +106,12 @@ CI 流程自动执行：
 
 - **全新 DB**（测试/本地）：先创建完整 Schema，再执行版本化数据迁移，最后收敛 Schema
 - **已有 DB**（存量 dev/staging/prod）：先执行数据迁移，再收敛 Schema，避免新约束先于数据修复
-- **CI 环境**：运行同一迁移镜像的新建、重复、漂移修复和升级验证；生产变更仍通过现有 Helm Job
+- **CI 环境**：运行同一迁移镜像的新建、业务行为及重复部署验证；生产变更仍通过现有 Helm Job
+
+存量库先执行数据迁移，再应用新 Schema。若数据迁移需要新增扩展，必须先在该数据迁移中安装，或由管理员预装；只改期望 Schema 来不及满足该数据迁移的依赖。
+原 extras 的遗留清理和中断任务转换移至 `040`；其 CHECK 修复仅用于尚缺新值的旧定义，不收窄完整 Schema。
+`035` 仅将触发器创建改为 `CREATE OR REPLACE`，避免空库完整 Schema 已创建触发器后的重名冲突。
+runner 按版本跳过已执行迁移，因此存量库保留旧 checksum、新库记录新 checksum；将来校验摘要时须处理这一已知差异。
 
 ## hci-sim 控制面 Schema（阶段 C/D）
 
