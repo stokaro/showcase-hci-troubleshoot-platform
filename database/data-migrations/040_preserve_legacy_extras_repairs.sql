@@ -2,20 +2,6 @@
 -- Fresh databases already declare these objects in desired_schema.sql.
 -- Existing databases still need the interrupted-job data conversion before schema apply.
 
--- Ptah's rehearsal also validates the existing schema. Widen the legacy foreign
--- keys first so the baseline can be reproduced without changing existing values.
-DO $$ BEGIN
-  IF to_regclass('public.bundle_metadata') IS NOT NULL THEN
-    ALTER TABLE bundle_metadata ALTER COLUMN kbd_id TYPE bigint;
-  END IF;
-  IF to_regclass('public.kbd_entry') IS NOT NULL THEN
-    ALTER TABLE kbd_entry ALTER COLUMN category_id TYPE varchar(64);
-  END IF;
-  IF to_regclass('public.sop_document') IS NOT NULL THEN
-    ALTER TABLE sop_document ALTER COLUMN category_id TYPE varchar(64);
-  END IF;
-END $$;
-
 DO $$ BEGIN
   -- 清理 message 表 Alembic 遗留触发器（避免 message_count 双倍计数）
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname='public' AND tablename='message') THEN

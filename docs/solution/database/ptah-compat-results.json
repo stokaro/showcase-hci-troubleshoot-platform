@@ -1,5 +1,5 @@
 {
-  "recorded_at_utc": "2026-09-30T02:36:51.307623+00:00",
+  "recorded_at_utc": "2026-09-30T11:13:49.424223+00:00",
   "scope": "Isolated PostgreSQL schema verification in a fork; no application, embedding-provider, Kubernetes, or production deployment.",
   "upstream": {
     "repository": "https://github.com/tomturing/hci-troubleshoot-platform",
@@ -11,34 +11,34 @@
     }
   },
   "ptah": {
-    "version": "0.11.0",
-    "release": "https://github.com/stokaro/ptah/releases/tag/v0.11.0",
-    "commit": "c5659b99db8198966e3ce66bf4452a7dc5ff16a3",
+    "version": "0.11.1",
+    "release": "https://github.com/stokaro/ptah/releases/tag/v0.11.1",
+    "commit": "36bd3a4f7e437eba3de6c979274aa5e145408b3f",
     "go": "go1.27.1",
     "platform": "linux/amd64",
-    "release_archive_sha256": "533d08c7ad4aba603865af7b856d8d5cc6c2602094509dc62d5307b5ccc025a0",
+    "release_archive_sha256": "5c0a2bfb297fa9dec4305e76a474376b98a10ddd1a9fa4301ff2043ed3382d29",
     "release_checksums_verified": true,
-    "compat_binary_sha256": "b5ae936e3d70258d1a1b13d4dbdf46637dc5301411973e0fcb5cfe3fa993edea"
+    "compat_binary_sha256": "8d0b975cc67fb617dde3fa954091052c3697f384fd7ad22d45919e03c5c6c1b7"
   },
   "execution": {
     "docker_context": "remote-dev-container",
-    "postgres": "PostgreSQL 15.19 (Debian 15.19-1.pgdg12+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit",
+    "postgres": "15.19 (Debian 15.19-1.pgdg12+2)",
     "postgres_image": [
       "pgvector/pgvector@sha256:a947c45cdc5906a1bc951f20a8709e321256343ee0f251e4ae00b5e7def4e6da"
     ],
-    "verification_image_id": "sha256:fd840f243d22ce86d6ed63bf8c9002a7ff9339db2d8c644f889f8ab4e1f82a3d",
+    "verification_image_id": "sha256:4c3ac0e01880efceebcacca6b294c23f5e4e281950782c6a0c2f0b2c219d0522",
     "user": "65534:65534",
-    "started_at_utc": "2026-09-30T02:30:40.892263319Z",
-    "finished_at_utc": "2026-09-30T02:31:11.72730572Z",
+    "started_at_utc": "2026-09-30T11:07:57.03422954Z",
+    "finished_at_utc": "2026-09-30T11:08:25.021465978Z",
     "exit_code": 0
   },
   "verified_input_sha256": {
-    "Dockerfile.migrations": "b3fdfb37519fa2d3c281805a8dfbc9fd627ce597683bd2de2a4f4194597e1a4d",
-    "database/desired_schema.sql": "879215d28991b5dc80f905999e81f8c037fb1383e18460189fe41e280a08cb9a",
+    "Dockerfile.migrations": "dd48cd40ecd37bf5bad4642e2f5a8c25cbd617fc1121c8228bf687e62c5cac43",
+    "database/desired_schema.sql": "ab8514ee7ebb260fa59574c77f0f8980cb4c1a06eb382b0242339aa1666a7168",
     "scripts/db-migrate.sh": "84f1ce2f751274a576d527e1e8aed7e8dffce3bd2613b0babb97e11eae4708be",
     "scripts/migration-runner.sh": "0aa37fe59f1f938fa6aa7463890595092fdadee07c09859d1cb5e7745b7ea611",
-    "scripts/verify-ptah-schema.sh": "af9aff20893b3599ad779a3d7aa7f9aea5bd6ff6c2d87d81c2831cd004b71ecd",
-    "database/tests/ptah-schema.sql": "c214f9b40a8fa0ba7e4ef94ea1e997bad2710d4d0bb6e46b6e967064d546f4d2",
+    "scripts/verify-ptah-schema.sh": "879695d5397faddf86985e636b5f1cc6b2afe29db37dcce170d3e6e6bebd383f",
+    "database/tests/ptah-schema.sql": "5c61ddd0f23370e87bd0e0c90051705e57ff6b29bd1a5c5838a318020cfad8ef",
     "database/tests/ptah-upgrade.sql": "c761ace96ee45d3d85bbea1708bef64563cee70d0101fd4a56fe3eb899f230e8"
   },
   "data_migration_sha256": {
@@ -80,28 +80,29 @@
     "database/data-migrations/037_recreate_qfk_var_tool.sql": "86a7312e5eea702a8352751c62a7ac2aa2615696cde9169d575b02f3bf639e79",
     "database/data-migrations/038_fix_sop_variable_output_path.sql": "244ade8d16368a607a8a083e6ab5506dd96f291f20174ee5ad255e694217dced",
     "database/data-migrations/039_update_sop_react_prompt_with_prerequisites.sql": "c95370e0c5d8c20e7d1c41daed44185329e53543f2c8431c6451da59eb3438fa",
-    "database/data-migrations/040_preserve_legacy_extras_repairs.sql": "4ed59d15b4f5bd76f5fa82842b3be8de6df9d98780ea62ccf14f724691054af3"
+    "database/data-migrations/040_preserve_legacy_extras_repairs.sql": "c1a96c8e1ba924626fe62b4e0e23f7856bfe024613b91869dd64b2700f6ad433"
   },
   "checks": {
     "fresh_install": "passed",
     "business_trigger_behavior": "passed",
-    "repeat_zero_diff_and_trigger_index_oid_stability": "passed",
     "extension_function_trigger_vector_index_drift_repair": "passed",
     "upgrade_from_unchanged_upstream_schema_and_extras": "passed",
     "representative_existing_rows_retained": "passed",
     "legacy_interrupted_job_repair": "passed",
     "original_executed_migration_035_checksum_retained": "a5f9b41b4b13d99a9ce97506b8b2d402618ac2c29b8dbeb0f4b40f05c7db13d6",
-    "upgrade_repeat_zero_diff_and_trigger_index_oid_stability": "passed"
+    "repeat_zero_diff_and_30_object_oid_stability": "passed",
+    "upgrade_repeat_zero_diff_and_30_object_oid_stability": "passed",
+    "native_apply_and_zero_diff": "passed"
   },
   "catalogs": {
     "original_psql": {
       "tables": 76,
       "extensions": {
-        "vector": "0.8.6",
         "pg_trgm": "1.6",
-        "plpgsql": "1.0",
         "pgcrypto": "1.3",
-        "uuid-ossp": "1.1"
+        "plpgsql": "1.0",
+        "uuid-ossp": "1.1",
+        "vector": "0.8.6"
       },
       "ivfflat_indexes": [
         {
@@ -132,11 +133,11 @@
     "ptah_fresh": {
       "tables": 76,
       "extensions": {
-        "vector": "0.8.6",
         "pg_trgm": "1.6",
-        "plpgsql": "1.0",
         "pgcrypto": "1.3",
-        "uuid-ossp": "1.1"
+        "plpgsql": "1.0",
+        "uuid-ossp": "1.1",
+        "vector": "0.8.6"
       },
       "ivfflat_indexes": [
         {
@@ -167,11 +168,46 @@
     "ptah_upgrade": {
       "tables": 76,
       "extensions": {
-        "vector": "0.8.6",
         "pg_trgm": "1.6",
-        "plpgsql": "1.0",
         "pgcrypto": "1.3",
-        "uuid-ossp": "1.1"
+        "plpgsql": "1.0",
+        "uuid-ossp": "1.1",
+        "vector": "0.8.6"
+      },
+      "ivfflat_indexes": [
+        {
+          "name": "idx_kb_category_embedding",
+          "valid": true,
+          "definition": "CREATE INDEX idx_kb_category_embedding ON public.kb_category USING ivfflat (embedding vector_cosine_ops) WITH (lists='100')",
+          "storage_parameters": [
+            "lists=100"
+          ]
+        },
+        {
+          "name": "idx_kbd_entry_embedding",
+          "valid": true,
+          "definition": "CREATE INDEX idx_kbd_entry_embedding ON public.kbd_entry USING ivfflat (embedding vector_cosine_ops) WITH (lists='100') WHERE ((status)::text = 'published'::text)",
+          "storage_parameters": [
+            "lists=100"
+          ]
+        }
+      ],
+      "application_functions": [
+        "fn_update_conversation_message_count",
+        "generate_case_id",
+        "update_bundle_metadata_updated_at",
+        "update_updated_at_column"
+      ],
+      "enabled_application_triggers": 24
+    },
+    "ptah_native": {
+      "tables": 76,
+      "extensions": {
+        "pg_trgm": "1.6",
+        "pgcrypto": "1.3",
+        "plpgsql": "1.0",
+        "uuid-ossp": "1.1",
+        "vector": "0.8.6"
       },
       "ivfflat_indexes": [
         {
@@ -201,34 +237,53 @@
     }
   },
   "column_comparison": {
-    "compared_columns": 1225,
-    "matching_column_names_types_nullability_defaults_except_disclosed_adaptations": true,
-    "widened_columns": [
-      "bundle_metadata.kbd_id",
-      "kbd_entry.category_id",
-      "sop_document.category_id"
+    "columns_compared": 1225,
+    "properties": [
+      "type",
+      "default",
+      "not_null"
     ],
-    "equivalent_current_timestamp_to_now_defaults": 73,
-    "explicit_to_implicit_sql_null_default": "sop_execution.pending_variable_name",
-    "changes_per_target": 77
+    "original_catalog_sha256": "ddd2479a3bda579a0c28463c415f893de0b23efd8084b1767452566e8bd71eb9",
+    "targets": {
+      "hci_article": {
+        "columns_compared": 1225,
+        "differences": 0,
+        "catalog_sha256": "ddd2479a3bda579a0c28463c415f893de0b23efd8084b1767452566e8bd71eb9"
+      },
+      "hci_fork": {
+        "columns_compared": 1225,
+        "differences": 0,
+        "catalog_sha256": "ddd2479a3bda579a0c28463c415f893de0b23efd8084b1767452566e8bd71eb9"
+      },
+      "hci_upgrade": {
+        "columns_compared": 1225,
+        "differences": 0,
+        "catalog_sha256": "ddd2479a3bda579a0c28463c415f893de0b23efd8084b1767452566e8bd71eb9"
+      },
+      "hci_native": {
+        "columns_compared": 1225,
+        "differences": 0,
+        "catalog_sha256": "ddd2479a3bda579a0c28463c415f893de0b23efd8084b1767452566e8bd71eb9"
+      }
+    }
   },
   "atlas_control": {
     "version_stdout": "atlas community version v1.3.1\nhttps://github.com/ariga/atlas/releases/tag/v1.3.1\nTo download an official version, visit: https://atlasgo.io/getting-started#installation",
     "image": [
       "arigaio/atlas@sha256:76cc66fb31f99d5d316676b8a9866ef4b6d6bf5aacc0639485d04848670839e4"
     ],
-    "input_sha256": "879215d28991b5dc80f905999e81f8c037fb1383e18460189fe41e280a08cb9a",
+    "input_sha256": "ab8514ee7ebb260fa59574c77f0f8980cb4c1a06eb382b0242339aa1666a7168",
     "extensions_preinstalled_in_target_and_scratch": true,
-    "command": "atlas schema apply --url <control-target> --to file:///desired_schema.sql --dev-url <control-scratch> --auto-approve",
+    "command": "atlas schema apply --url <control-target> --to file:///work/database/desired_schema.sql --dev-url <control-scratch> --auto-approve",
     "exit_code": 0,
     "catalog": {
       "tables": 76,
       "extensions": {
-        "vector": "0.8.6",
         "pg_trgm": "1.6",
-        "plpgsql": "1.0",
         "pgcrypto": "1.3",
-        "uuid-ossp": "1.1"
+        "plpgsql": "1.0",
+        "uuid-ossp": "1.1",
+        "vector": "0.8.6"
       },
       "ivfflat_indexes": [
         {
@@ -244,16 +299,16 @@
           "storage_parameters": null
         }
       ],
-      "application_functions": null,
+      "application_functions": [],
       "enabled_application_triggers": 0
     },
-    "apply_log_sha256": "005cbb4a2016977e8e3f5ff1303121dbf38b42c340acd4d6ed5dff8884a6adff"
+    "apply_log_sha256": "dd712b3f83e5f6a4a6a31fea205845f32dd3ec5e4858a6c49d7b4621262a6365"
   },
-  "verification_stdout_sha256": "e46b4f291fb9ec0e2a933e34dd9f908e2c78454ef2f9335cea0543649e909f23",
+  "verification_stdout_sha256": "e0fee36f961e50715931bbec358601bc31c5ef72d87ff0fffa4b9dc42cbdfb7a",
   "verification_stdout": [
-    "Version: 0.11.0",
-    "Commit: c5659b99db8198966e3ce66bf4452a7dc5ff16a3",
-    "Date: 2026-09-29T14:09:59Z",
+    "Version: 0.11.1",
+    "Commit: 36bd3a4f7e437eba3de6c979274aa5e145408b3f",
+    "Date: 2026-09-30T10:16:30Z",
     "Go: go1.27.1",
     "Platform: linux/amd64",
     "Testing fresh",
@@ -261,7 +316,7 @@
     "DO",
     "ROLLBACK",
     "Testing repeat",
-    "PASS: fresh install and repeat preserve every trigger and both vector indexes",
+    "PASS: fresh install and repeat preserve every function, trigger, and vector index",
     "DROP TRIGGER",
     "DROP INDEX",
     "DROP EXTENSION",
@@ -293,5 +348,7 @@
     "DO",
     "Testing upgrade-repeat",
     "PASS: upstream upgrade preserves data, runs legacy repairs, and stays synchronized"
-  ]
+  ],
+  "original_schema_bytes_preserved": true,
+  "column_widening_migration_removed": true
 }

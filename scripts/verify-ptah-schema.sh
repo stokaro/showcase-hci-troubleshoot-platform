@@ -56,7 +56,13 @@ object_identity() {
        WHERE relname IN ('idx_kb_category_embedding','idx_kbd_entry_embedding')
      UNION ALL
      SELECT 'trigger:'||tgrelid::regclass||':'||tgname||':'||oid FROM pg_trigger
-       WHERE NOT tgisinternal ORDER BY 1;"
+       WHERE NOT tgisinternal
+     UNION ALL
+     SELECT 'function:'||p.oid::regprocedure||':'||p.oid FROM pg_proc p
+       JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname='public' AND NOT EXISTS
+         (SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass
+          AND d.objid=p.oid AND d.deptype='e') ORDER BY 1;"
 }
 
 for url in "$DATABASE_URL" "$DEV_URL" "$UPGRADE_DATABASE_URL" "$UPGRADE_DEV_URL"; do
@@ -74,7 +80,7 @@ before=$(object_identity "$DATABASE_URL")
 run_migrations repeat "$DATABASE_URL" "$DEV_URL"
 assert_synced "$DATABASE_URL" "$DEV_URL"
 test "$before" = "$(object_identity "$DATABASE_URL")"
-echo "PASS: fresh install and repeat preserve every trigger and both vector indexes"
+echo "PASS: fresh install and repeat preserve every function, trigger, and vector index"
 
 psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL" <<'SQL'
 DROP TRIGGER update_user_updated_at ON "user";

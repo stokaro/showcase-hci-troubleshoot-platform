@@ -1,7 +1,7 @@
 # One PostgreSQL desired state with Ptah Compat
 
 This fork replaces the Atlas schema pipeline with the released Ptah Compat
-0.11.0 binary. Extensions, functions, and triggers join tables and indexes in
+0.11.1 binary. Extensions, functions, and triggers join tables and indexes in
 `database/desired_schema.sql`. Deployment no longer runs `desired_extras.sql`
 before and after the schema command.
 
@@ -16,11 +16,12 @@ The migration image passed fresh-install, repeat, drift-repair, and upstream-upg
 checks on PostgreSQL 15.19 with pgvector 0.8.6. It ran as UID 65534. Both fresh and
 upgraded databases contain 76 tables, four application functions, 24 enabled
 application triggers, and all four declared extensions. Repeated deployments
-produce zero schema diff and preserve trigger and vector-index identities.
+produce zero schema diff and preserve function, trigger, and vector-index identities.
 
 An independent catalog comparison covered all 1,225 upstream columns. The
-differences are the three widened columns, 73 equivalent timestamp defaults, and
-the explicit-to-implicit SQL NULL default listed below. Both IVFFlat index
+fresh and upgraded catalogs have zero differences in types, defaults, or
+nullability. The complete original schema is retained byte for byte in the
+combined desired state. Both IVFFlat index
 definitions match the upstream PostgreSQL catalog, including `vector_cosine_ops`,
 `lists=100`, and the `published` filter on the knowledge-entry index.
 
@@ -60,29 +61,37 @@ The PostgreSQL init ConfigMaps no longer contain copies of application schema
 objects. The migration Job owns them. The same pgvector-enabled server image
 and database permissions remain necessary.
 
-## SQL adjustments required by Ptah 0.11.0
+## Original SQL retained in Ptah 0.11.1
 
-The unmodified schema did not pass Ptah's validation. This fork makes the
-following changes; this is a measured adaptation of the schema, not a claim
-that replacing the executable alone works.
+The initial 0.11.0 rehearsal required changes for Ptah defects. Version 0.11.1
+fixes those defects in the shared SQL and comparison code. This fork removes
+the workarounds rather than asking the application to change valid SQL.
 
-| Declaration | Upstream | This fork | Reason |
-| --- | --- | --- | --- |
-| `bundle_metadata.kbd_id` | `INTEGER` | `BIGINT` | Match the referenced `kbd_entry.id` storage type. Ptah refuses the mixed integer widths. |
-| `kbd_entry.category_id` | `varchar(32)` | `varchar(64)` | Match `kb_category.code`. Ptah refuses different declared lengths. |
-| `sop_document.category_id` | `varchar(32)` | `varchar(64)` | Match the same referenced category key. |
-| Timestamp defaults | `CURRENT_TIMESTAMP` | `now()` | Ptah's SQL reader rendered the former as invalid PostgreSQL `CURRENT_TIMESTAMP()`. |
-| `sop_execution.pending_variable_name` default | `DEFAULT NULL` | Implicit SQL NULL default | The SQL reader treated the explicit NULL as the text value `'NULL'`. Omitting it retains the original PostgreSQL meaning. |
-| `generate_case_id()` return type | `varchar(20)` | `varchar` | PostgreSQL discards function return-type modifiers; retaining it caused a repeated drop/recreate plan in Ptah. |
+| Declaration retained | Fix in Ptah 0.11.1 |
+| --- | --- |
+| `bundle_metadata.kbd_id INTEGER` referencing `BIGINT` | PostgreSQL foreign-key validation accepts different compatible integer widths. |
+| Both `category_id varchar(32)` references to `varchar(64)` | Foreign-key validation no longer requires the same declared varchar length. |
+| All 73 `CURRENT_TIMESTAMP` defaults | The reader retains the keyword instead of rendering invalid empty parentheses. |
+| `pending_variable_name DEFAULT NULL` | The reader distinguishes SQL NULL from the string `'NULL'`. |
+| `generate_case_id() RETURNS varchar(20)` | Routine comparison accounts for PostgreSQL's discarded modifiers without rewriting the declaration. |
 
-The column changes widen storage and keep existing values. Migration `040`
-performs the widening before Ptah rehearses the original baseline; that baseline
-hit the same foreign-key validation as the desired schema. PostgreSQL itself
-accepts the original foreign keys, as the upgrade fixture verifies.
-[PostgreSQL documents `now()` and `CURRENT_TIMESTAMP` as equivalent](https://www.postgresql.org/docs/15/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT).
-It also documents that
-[`CREATE FUNCTION` discards parenthesized type modifiers](https://www.postgresql.org/docs/15/sql-createfunction.html).
-The timestamp and function spelling changes preserve PostgreSQL behavior.
+The original table and index SQL is embedded unchanged. Extension declarations
+are prepended, and application function and trigger declarations are appended.
+Migration `040` has no column-widening statements. The live catalogs are compared
+with the original SQL executed independently through psql.
+
+## Reasons for the integration changes
+
+| Change | Reason |
+| --- | --- |
+| Combine the schema and the object declarations from extras | The desired state must include every object that schema reconciliation owns. |
+| Use the released binary in the migration image | The deployment must run the fixes verified here; its archive checksum is checked during the image build. |
+| Replace Atlas/extras calls in Compose, Helm, and Make targets | Every deployment path uses the same complete desired state and data-repair order. |
+| Remove application DDL from PostgreSQL init ConfigMaps | Initialization must not retain a second copy of definitions now owned by the desired schema. |
+| Move existing extras repairs to migration `040` | Retain interrupted-job conversion and obsolete-trigger cleanup after removing the extras file. |
+| Make migration `035` use `CREATE OR REPLACE TRIGGER` | A fresh complete schema already contains that trigger; the historical migration must not fail on its second creation. |
+| Retain a separate scratch database and set index/exclusion options | Rehearse the plan, preserve `lists=100`, and allow absent historical tool tables on fresh installs. |
+| Update verification and migration documentation | Check fresh, repeat, repair, and original-schema upgrade through the actual deployment image. |
 
 ## Existing installations and data migrations
 
@@ -137,7 +146,10 @@ The verification covers:
 - Creating the full schema, including application functions, enabled triggers,
   extensions, and both IVFFlat indexes with their storage parameters.
 - Exercising `updated_at`, case-ID generation, and message INSERT/DELETE counting.
-- Repeating deployment with zero schema diff and unchanged trigger/index OIDs.
+- Evaluating the SQL NULL default. PostgreSQL stores the original explicit
+  declaration as `NULL::character varying`; an absent catalog expression is
+  not required. A text value `'NULL'` fails the check.
+- Repeating deployment with zero schema diff and unchanged function/trigger/index OIDs.
 - Repairing a removed extension, replaced function, removed trigger, and removed
   vector index through the same declarative entrypoint.
 - Loading the unchanged upstream schema and extras, adding representative existing

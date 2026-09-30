@@ -1,6 +1,6 @@
 # The released Ptah Compat binary manages the complete PostgreSQL desired state.
 FROM alpine:3.23 AS ptah-bin
-ARG PTAH_VERSION=0.11.0
+ARG PTAH_VERSION=0.11.1
 ARG TARGETARCH
 RUN apk add --no-cache curl tar
 WORKDIR /download

@@ -8,6 +8,8 @@ DECLARE
   case_number varchar;
   next_case_number varchar;
   actual integer;
+  default_sql text;
+  default_is_null boolean;
 BEGIN
   SELECT count(*) INTO actual FROM pg_tables WHERE schemaname='public';
   IF actual <> 76 THEN RAISE EXCEPTION 'Expected 76 tables, got %', actual; END IF;
@@ -30,10 +32,14 @@ BEGIN
   IF '[1,0,0]'::vector <=> '[1,0,0]'::vector <> 0 THEN
     RAISE EXCEPTION 'pgvector cosine distance failed';
   END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns
+  SELECT column_default INTO default_sql FROM information_schema.columns
     WHERE table_schema='public' AND table_name='sop_execution'
-      AND column_name='pending_variable_name' AND column_default IS NOT NULL) THEN
-    RAISE EXCEPTION 'pending_variable_name must retain its implicit SQL NULL default';
+      AND column_name='pending_variable_name';
+  IF default_sql IS NOT NULL THEN
+    EXECUTE 'SELECT (' || default_sql || ') IS NULL' INTO default_is_null;
+    IF NOT default_is_null THEN
+      RAISE EXCEPTION 'pending_variable_name must retain its SQL NULL default';
+    END IF;
   END IF;
 
   INSERT INTO "user"(client_id,updated_at) VALUES ('ptah-functional-test','2000-01-01')

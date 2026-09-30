@@ -2,13 +2,13 @@
 
 ## Ptah Compat in this fork
 
-[Ptah Compat 0.11.0](https://github.com/stokaro/ptah/releases/tag/v0.11.0)
+[Ptah Compat 0.11.1](https://github.com/stokaro/ptah/releases/tag/v0.11.1)
 reconciles extensions, enums, tables, indexes, foreign keys, functions, and triggers
 from `database/desired_schema.sql`. The migration image no longer applies
 `desired_extras.sql` before and after the schema command.
 
 Read the [migration and validation notes](../docs/solution/database/ptah-compat-validation.md)
-for the measured results, required SQL adjustments, and a reproducible test.
+for the measured results, reasons for the integration changes, and a reproducible test.
 
 ```sh
 export PTAH_POSTGRES_INDEX_STORAGE_PARAMS=1
